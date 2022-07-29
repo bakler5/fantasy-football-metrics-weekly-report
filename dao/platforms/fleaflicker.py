@@ -47,7 +47,7 @@ class LeagueData(object):
         self.dev_offline = dev_offline
 
         self.offensive_positions = ["QB", "RB", "WR", "TE", "K", "RB/WR", "WR/TE", "RB/WR/TE", "RB/WR/TE/QB"]
-        self.defensive_positions = ["D/ST"]
+        self.defensive_positions = ["EDR/IL", "DB", "LB"]
 
         # create full directory path if any directories in it do not already exist
         if not os.path.exists(self.data_dir):
@@ -358,6 +358,18 @@ class LeagueData(object):
             if pos_name == "RB/WR/TE/QB":
                 league.flex_positions_qb_rb_te_wr = ["QB", "RB", "TE", "WR"]
                 pos_name = "FLEX_QB_RB_TE_WR"
+            if pos_name == "CB":
+                league.flex_positions_db = ["CB", "S"]
+                pos_name = "DB"
+            if pos_name == "S":
+                league.flex_positions_db = ["CB", "S"]
+                pos_name = "DB"
+            if pos_name == "EDR":
+                league.flex_positions_edr_il = ["EDR", "IL"]
+                pos_name = "EDR/IL"
+            if pos_name == "IL":
+                league.flex_positions_edr_il = ["EDR", "IL"]
+                pos_name = "EDR/IL"
 
             pos_counter = deepcopy(pos_count)
             while pos_counter > 0:
@@ -568,6 +580,10 @@ class LeagueData(object):
                                 base_player.eligible_positions.append("FLEX_RB_TE_WR")
                             if position in league.flex_positions_qb_rb_te_wr:
                                 base_player.eligible_positions.append("FLEX_QB_RB_TE_WR")
+                            if position in league.flex_positions_db:
+                                base_player.eligible_positions.append("DB")
+                            if position in league.flex_positions_edr_il:
+                                base_player.eligible_positions.append("EDR/IL")
                         base_player.eligible_positions = list(set(base_player.eligible_positions))
 
                         selected_position = flea_player_position.get("label")
@@ -579,6 +595,14 @@ class LeagueData(object):
                             base_player.selected_position = "FLEX_RB_TE_WR"
                         elif selected_position == "RB/WR/TE/QB":
                             base_player.selected_position = "FLEX_QB_RB_TE_WR"
+                        elif selected_position == "CB":
+                            base_player.selected_position = "DB"
+                        elif selected_position == "S":
+                            base_player.selected_position = "DB"
+                        elif selected_position == "EDR":
+                            base_player.selected_position = "EDR/IL"
+                        elif selected_position == "IL":
+                            base_player.selected_position = "EDR/IL"
                         else:
                             base_player.selected_position = selected_position
                         base_player.selected_position_is_flex = True if "/" in flea_pro_player.get(
