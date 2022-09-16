@@ -157,7 +157,7 @@ class CalculateMetrics(object):
                 x.get_combined_record().get_wins(),
                 -x.get_combined_record().get_losses(),
                 x.get_combined_record().get_ties(),
-                x.get_median_record().get_points_for()
+                x.get_combined_record().get_points_for()
             ),
             reverse=True
         ):  # type: BaseTeam
