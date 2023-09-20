@@ -363,7 +363,17 @@ class LeagueData(object):
                 "flex_label": "FLEX_QB_RB_TE_WR",
                 "flex_positions_attribute": "flex_positions_qb_rb_te_wr",
                 "flex_positions": ["QB", "RB", "TE", "WR"]
-            }
+            },
+            "DB": {
+                "flex_label": "DB",
+                "flex_positions_attribute": "flex_positions_cb_s",
+                "flex_positions": ["CB", "S"]
+            },
+            "EDR/IL": {
+                "flex_label": "EDR/IL",
+                "flex_positions_attribute": "flex_positions_edr_il",
+                "flex_positions": ["EDR", "IL"]
+            },                
         }
 
         for position in self.roster_positions:

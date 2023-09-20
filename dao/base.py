@@ -120,7 +120,8 @@ class BaseLeague(FantasyFootballReportObject):
         self.flex_positions_rb_te_wr = []
         self.flex_positions_qb_rb_te_wr = []
         self.flex_positions_offensive_player = []
-        self.flex_positions_idp = []
+        self.flex_positions_db = []
+        self.flex_positions_edr_il = []
 
         self.matchups_by_week = {}
         self.teams_by_week = {}
@@ -216,7 +217,8 @@ class BaseLeague(FantasyFootballReportObject):
             "FLEX_RB_TE_WR": self.flex_positions_rb_te_wr,
             "FLEX_QB_RB_TE_WR": self.flex_positions_qb_rb_te_wr,
             "FLEX_OFFENSIVE_PLAYER": self.flex_positions_offensive_player,
-            "FLEX_IDP": self.flex_positions_idp
+            "FLEX_DB": self.flex_positions_db,
+            "FLEX_EDR_IL": self.flex_positions_edr_il,
         }
 
     def get_playoff_probs(self, save_data=False, playoff_prob_sims=None, dev_offline=False, recalculate=True):
