@@ -355,25 +355,30 @@ class LeagueData(object):
                 "flex_positions": ["TE", "WR"]
             },
             "RB/WR/TE": {
-                "flex_label": "FLEX_RB_TE_WR",
+                "flex_label": "FLEX",
                 "flex_positions_attribute": "flex_positions_rb_te_wr",
                 "flex_positions": ["RB", "TE", "WR"]
             },
             "RB/WR/TE/QB": {
-                "flex_label": "FLEX_QB_RB_TE_WR",
+                "flex_label": "SUPERFLEX",
                 "flex_positions_attribute": "flex_positions_qb_rb_te_wr",
                 "flex_positions": ["QB", "RB", "TE", "WR"]
             },
             "DB": {
-                "flex_label": "DB",
-                "flex_positions_attribute": "flex_positions_cb_s",
+                "flex_label": "FLEX_DB",
+                "flex_positions_attribute": "flex_positions_db",
                 "flex_positions": ["CB", "S"]
             },
             "EDR/IL": {
-                "flex_label": "EDR/IL",
-                "flex_positions_attribute": "flex_positions_edr_il",
+                "flex_label": "FLEX_DL",
+                "flex_positions_attribute": "flex_positions_dl",
                 "flex_positions": ["EDR", "IL"]
-            },                
+            },
+            "DB/EDR/IL/LB": {
+                "flex_label": "FLEX_IDP",
+                "flex_positions_attribute": "flex_positions_individual_defensive_player",
+                "flex_positions": ["CB", "EDR", "IL", "LB", "S"]
+            }
         }
 
         for position in self.roster_positions:
