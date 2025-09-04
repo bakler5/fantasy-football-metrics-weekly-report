@@ -6,7 +6,6 @@
 * [Note to Users](#note-to-users)
 * [Manual Setup](#manual-setup)
 * [Running the Report Application](#running-the-report-application)
-    * [macOS Launch Script](#macos-launch-script)
 * [Virtual Environment](#virtual-environment)
 
 ---
@@ -95,8 +94,6 @@
 <a name="running-the-report-application"></a>
 ### Running the Report Application
 
-* If you are running on macOS, see [below](#macos-launch-script)!
-
 * *If you followed the setup instructions and set up the application to run in a virtual environment, once you have navigated to the project directory, you **MUST** run*
 
     ```bash
@@ -105,7 +102,7 @@
   
   *before running the report **EVERY TIME** you open a new command line prompt to run the application!*
 
-* Make sure you have updated the default league ID (`league_id` value) in the `config.ini` file to your own league id. Please see the respective setup instructions for your chosen platform for directions on how to find your league ID.
+* Make sure you have updated the default league ID (`league_id` value) in the `.env` file to your own league id. Please see the respective setup instructions for your chosen platform for directions on how to find your league ID.
 
 * Run `python main.py`. You should see the following prompts: 
 
@@ -129,35 +126,7 @@
       
     * Assuming the above went as expected, the application should now generate a report for your fantasy league for the selected NFL week.
     
-***NOTE***: You can also specify a large number of configuration options directly in the command line. Please see the [usage section](../../README.md#usage) for more information.
-
-<a name="macos-launch-script"></a>
-##### macOS Launch Script
-If you are running on macOS, there is an additional bash script available in the project, [run_in_virtualenv.command](../run_in_virtualenv.command). This script allows you to double-click it and run the app in a new Terminal window. It ***REQUIRES*** you to have completed all steps in [Setup](../../README.md#setup), and also the above steps in [Running the Report Application](#running-the-report-application), except running the `workon` command or the `python main.py` command. Instead, do the following:
-
-* Right click on [run_in_virtualenv.command](../run_in_virtualenv.command) and select `Open With`, then select `TextEdit`.
-
-* Modify the path you find in the script after `cd` to point to wherever you cloned the application. You can either use the absolute path (something like `/Users/username/Projects/fantasy-football-metrics-weekly-report`), or a shortcut to your home directory (`~`), like `~/Documents/fantasy-football-metrics-weekly-report`).
-
-* Move [run_in_virtualenv.command](../run_in_virtualenv.command) wherever you wish it to be for easy access.
-
-* **You can now double-click [run_in_virtualenv.command](../run_in_virtualenv.command), and it will open a new Terminal window and run the application!** *If that fails, you may need to change the permissions on [run_in_virtualenv.command](../run_in_virtualenv.command)*. You can do that as follows:
-    
-    * Open a Terminal window.
-    
-    * Run `cd path/to/wherever/you/put/run_in_virtualenv.command`
-    
-    * Run `chmod +x run_in_virtualenv.command`
-    
-    * If you get a permissions error after running the `chmod` command, you may need to run it as an administrator:
-    
-        ```bash
-        sudo chmod +x run_in_virtualenv.command
-        ```
-     
-        And then put in your password to allow the operating system to modify the permissions on [run_in_virtualenv.command](../run_in_virtualenv.command).
-        
-    * ***NOW*** you should be able to double-click [run_in_virtualenv.command](../run_in_virtualenv.command) to launch the application!
+***NOTE***: You can also specify a large number of settings directly in the command line. Please see the [usage section](../../README.md#usage) for more information.
 
 ---
 

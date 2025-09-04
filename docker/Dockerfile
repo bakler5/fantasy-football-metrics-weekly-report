@@ -1,15 +1,16 @@
 ARG PYTHON_VERSION_MAJOR=$PYTHON_VERSION_MAJOR
 ARG PYTHON_VERSION_MINOR=$PYTHON_VERSION_MINOR
+ARG PYTHON_VERSION_PATCH=$PYTHON_VERSION_PATCH
 
 # set base image
-FROM --platform=linux/amd64 python:${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}-slim
+FROM python:${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}.${PYTHON_VERSION_PATCH}-slim
 
 LABEL "org.opencontainers.image.source"="https://github.com/uberfastman/fantasy-football-metrics-weekly-report"
 
 # update package index list
-RUN apt update && \
-    apt upgrade && \
-    apt install -y git
+RUN apt-get update -y && \
+    apt-get upgrade -y && \
+    apt-get install -y git
 
 # set the working directory in the container
 WORKDIR /opt/ffmwr
