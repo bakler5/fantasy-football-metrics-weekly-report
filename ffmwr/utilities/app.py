@@ -1,5 +1,5 @@
-__author__ = "Wren J. R. (uberfastman)"
-__email__ = "uberfastman@uberfastman.dev"
+__author__ = "Josh Bachler (fork maintainer); original: Wren J. R. (uberfastman)"
+__email__ = "bakler5@gmail.com"
 
 import os
 import re
@@ -31,6 +31,7 @@ from ffmwr.features.high_roller import HighRollerFeature
 from ffmwr.models.base.model import BaseLeague, BasePlayer, BaseTeam
 from ffmwr.utilities.constants import nfl_team_names_to_abbreviations, prohibited_statuses
 from ffmwr.utilities.logger import get_logger
+from ffmwr.utilities.exceptions import AppConfigError, UpdateError, DataUnavailableError
 from ffmwr.utilities.settings import AppSettings, get_app_settings_from_env_file
 from ffmwr.utilities.utils import format_platform_display, generate_normalized_player_key, get_data_from_web
 
@@ -106,9 +107,9 @@ def get_current_nfl_week(settings: AppSettings, offline: bool) -> int:
         logger.debug("Retrieving current NFL week from the Sleeper API.")
 
         try:
-            nfl_weekly_info = requests.get(api_url).json()
+            nfl_weekly_info = requests.get(api_url, timeout=10).json()
             current_nfl_week = nfl_weekly_info.get("leg")
-        except (KeyError, ValueError) as e:
+        except (KeyError, ValueError, requests.RequestException) as e:
             logger.warning('Unable to retrieve current NFL week. Defaulting to value set in ".env" file.')
             logger.debug(e)
 
@@ -211,20 +212,22 @@ def platform_data_factory(
                 offline,
             )
         else:
-            logger.error(
+            message = (
                 f'Generating fantasy football reports for the "{format_platform_display(platform)}" fantasy football '
                 f"platform is not currently supported. Please change the settings in your .env file and try again."
             )
-            sys.exit(1)
+            logger.error(message)
+            raise AppConfigError(message)
 
         return platform_data
 
     else:
-        logger.error(
+        message = (
             f'Generating fantasy football reports for the "{format_platform_display(platform)}" fantasy football '
             f"platform is not currently supported. Please change the settings in your .env file and try again."
         )
-        sys.exit(1)
+        logger.error(message)
+        raise AppConfigError(message)
 
 
 def add_report_player_stats(
@@ -425,7 +428,7 @@ def get_inactive_players(week: int, league: BaseLeague) -> List[str]:
     if not league.offline:
         params = {"yr": str(league.season), "wk": str(week), "type": "reg"}
 
-        response = requests.get(injured_players_url, headers=headers, params=params)
+        response = requests.get(injured_players_url, headers=headers, params=params, timeout=20)
 
         html_soup = BeautifulSoup(response.text, "html.parser")
         logger.debug(f"Response URL: {response.url}")
@@ -436,10 +439,11 @@ def get_inactive_players(week: int, league: BaseLeague) -> List[str]:
             with open(data_file_path, "r", encoding="utf-8") as data_in:
                 html_soup = BeautifulSoup(data_in.read(), "html.parser")
         except FileNotFoundError:
-            logger.error(
+            message = (
                 f"FILE {data_file_path} DOES NOT EXIST. CANNOT LOAD DATA LOCALLY WITHOUT HAVING PREVIOUSLY SAVED DATA!"
             )
-            sys.exit(1)
+            logger.error(message)
+            raise DataUnavailableError(message)
 
     if league.save_data:
         if not Path(data_dir).exists():
@@ -499,11 +503,12 @@ def get_inactive_players(week: int, league: BaseLeague) -> List[str]:
                 with open(player.player_data_file_path, "r", encoding="utf-8") as player_html_in:
                     player_pages[player_url] = player_html_in.read()
             except FileNotFoundError:
-                logger.error(
+                message = (
                     f"FILE {player.player_data_file_path} DOES NOT EXIST. CANNOT LOAD DATA LOCALLY WITHOUT HAVING "
                     f"PREVIOUSLY SAVED DATA!"
                 )
-                sys.exit(1)
+                logger.error(message)
+                raise DataUnavailableError(message)
 
     for player_url, player_page_html in player_pages.items():
         injury_report_player = injury_report_players_to_check[player_url]
@@ -593,140 +598,13 @@ def git_ls_remote(url: str):
 
 
 def check_github_for_updates(use_default: bool = False):
-    if not active_network_connection():
-        logger.info(
-            "No active network connection found. Unable to check for updates for the Fantasy Football Metrics Weekly "
-            "Report app."
-        )
-    else:
-        logger.debug("Checking upstream remote for app updates.")
-        project_repo = Repo(Path(__file__).parent.parent)
+    """Updates are disabled for this forked/private project.
 
-        origin_url = str(project_repo.remotes.origin.url)
-        origin_url_with_https = None
-        # temporarily convert git remote URL from SSH to HTTPS if necessary
-        if "https" not in origin_url:
-            origin_url_with_https = f"https://github.com/{str(project_repo.remotes.origin.url).split(':')[1]}"
-            project_repo.remote(name="origin").set_url(origin_url_with_https)
-
-        project_repo.remote(name="origin").update()
-        project_repo.remote(name="origin").fetch(prune=True)
-
-        version_tags = sorted(
-            [tag_ref for tag_ref in project_repo.tags if hasattr(tag_ref.tag, "tagged_date")],
-            key=lambda x: x.tag.tagged_date,
-            reverse=True,
-        )
-
-        last_local_version = None
-        tag_ndx = 0
-        while not last_local_version:
-            next_tag: TagReference = version_tags[tag_ndx]
-            for commit in project_repo.iter_commits():
-                if next_tag.commit == commit:
-                    last_local_version = next_tag
-            if not last_local_version:
-                tag_ndx += 1
-
-        ls_remote = git_ls_remote(origin_url_with_https or origin_url)
-        regex = re.compile("[^0-9.]")
-        remote_tags = sorted(
-            set(
-                [
-                    (regex.sub("", ref), ref.replace("^{}", "").replace("refs/tags/", ""))
-                    for ref in ls_remote.keys()
-                    if "tags" in ref
-                ]
-            ),
-            key=lambda x: list(map(int, x[0].split("."))),
-            reverse=True,
-        )
-        last_remote_version = remote_tags[0][1]
-
-        target_branch = "main"
-        active_branch = project_repo.active_branch.name
-        if active_branch != target_branch:
-            if not use_default:
-                switch_branch = input(
-                    f"{Fore.YELLOW}You are {Fore.RED}not {Fore.YELLOW}on the deployment branch "
-                    f'({Fore.GREEN}"{target_branch}"{Fore.YELLOW}) of the Fantasy Football Metrics Weekly Report '
-                    f'app.\nDo you want to switch to the {Fore.GREEN}"{target_branch}"{Fore.YELLOW} branch? '
-                    f"({Fore.GREEN}y{Fore.YELLOW}/{Fore.RED}n{Fore.YELLOW}) -> {Style.RESET_ALL}"
-                )
-
-                if switch_branch == "y":
-                    project_repo.git.checkout(target_branch)
-                elif switch_branch == "n":
-                    logger.warning(
-                        f'Running the app on a branch that is not "{target_branch}" could result in unexpected and '
-                        f"potentially incorrect output."
-                    )
-                else:
-                    logger.warning('You must select either "y" or "n".')
-                    project_repo.remote(name="origin").set_url(origin_url)
-                    return check_github_for_updates(use_default)
-            else:
-                logger.info('Use-default is set to "true". Automatically switching to deployment branch "main".')
-                project_repo.git.checkout(target_branch)
-
-        num_commits_behind = len(list(project_repo.iter_commits(f"{target_branch}..origin/{target_branch}")))
-
-        if str(last_local_version) == str(last_remote_version):
-            local_version_color = Fore.GREEN
-            remote_version_color = Fore.GREEN
-        else:
-            local_version_color = Fore.RED
-            remote_version_color = Fore.YELLOW
-
-        if num_commits_behind > 0:
-            num_commits_color = Fore.RED
-        else:
-            num_commits_color = Fore.GREEN
-
-        if num_commits_behind > 0:
-            up_to_date_status_msg = (
-                f"\n"
-                f"{Fore.YELLOW}The Fantasy Football Metrics Weekly Report app is {Fore.RED}OUT OF DATE:\n\n"
-                f"  {local_version_color}Locally installed version: {last_local_version}\n"
-                f"     {remote_version_color}Latest version on {target_branch}: {last_remote_version}\n"
-                f"        {num_commits_color}Commits behind {target_branch}: {num_commits_behind}\n\n"
-                f"{Fore.YELLOW}Please update the app and re-run to generate a report.{Style.RESET_ALL}"
-            )
-            logger.debug(up_to_date_status_msg)
-            confirm_update = input(
-                f"{up_to_date_status_msg} {Fore.GREEN}Do you wish to update the app? "
-                f"{Fore.YELLOW}({Fore.GREEN}y{Fore.YELLOW}/{Fore.RED}n{Fore.YELLOW}) -> {Style.RESET_ALL}"
-            )
-
-            not_up_to_date_status_message = (
-                f"Running {last_local_version} of app. Please update to {last_remote_version} for the latest "
-                f"features, improvements, and fixes."
-            )
-
-            if confirm_update == "y":
-                up_to_date = update_app(project_repo)
-                if up_to_date:
-                    logger.info("The Fantasy Football Metrics Weekly Report app has been successfully updated!")
-                else:
-                    logger.warning(not_up_to_date_status_message)
-                project_repo.remote(name="origin").set_url(origin_url)
-                return up_to_date
-
-            if confirm_update == "n":
-                logger.warning(not_up_to_date_status_message)
-                project_repo.remote(name="origin").set_url(origin_url)
-                return False
-            else:
-                logger.warning('Please only select "y" or "n".')
-                time.sleep(0.25)
-                check_github_for_updates()
-        else:
-            logger.info(
-                f"The Fantasy Football Metrics Weekly Report app is {Fore.GREEN}up to date{Fore.WHITE} and running "
-                f"{Fore.GREEN}{last_local_version}{Fore.WHITE}."
-            )
-            project_repo.remote(name="origin").set_url(origin_url)
-            return True
+    This function intentionally avoids any remote operations or local git changes.
+    It logs a brief note and returns True to allow normal app flow.
+    """
+    logger.info("Automatic update checks are disabled for this fork.")
+    return True
 
 
 def update_app(repository: Repo):
@@ -734,12 +612,15 @@ def update_app(repository: Repo):
 
     diff = repository.index.diff(None)
     if len(diff) > 0:
-        logger.error("There are changes to local files that could cause conflicts when updating the app automatically.")
+        message = (
+            "There are changes to local files that could cause conflicts when updating the app automatically."
+        )
+        logger.error(message)
         logger.warning(
             f"Please update the app manually by running {Fore.WHITE}git pull origin main{Fore.YELLOW} and resolve any "
             f"conflicts by hand to update."
         )
-        sys.exit(2)
+        raise UpdateError(message)
 
     response = repository.git.pull("origin", "main")
     logger.debug(response)

@@ -9,6 +9,7 @@ import requests
 from colorama import Fore, Style
 
 from ffmwr.models.base.model import BaseManager, BaseMatchup, BasePlayer, BaseRecord, BaseStat, BaseTeam
+from ffmwr.utilities.exceptions import NetworkError
 from ffmwr.dao.platforms.base.platform import BasePlatform
 from ffmwr.utilities.logger import get_logger
 from ffmwr.utilities.settings import AppSettings, get_app_settings_from_env_file
@@ -111,7 +112,10 @@ class CBSPlatform(BasePlatform):
 
         auth_url = f"{self.auth_base_url}/general/oauth/mobile/login?response_format=json"
 
-        response_json = requests.post(auth_url, headers=auth_query_headers, data=auth_query_data).json()
+        try:
+            response_json = self._request_with_retries("POST", auth_url, headers=auth_query_headers, timeout=20, data=auth_query_data).json()
+        except Exception as e:
+            raise NetworkError(f"CBS auth failed: {e}")
 
         return response_json.get("body").get("access_token")
 

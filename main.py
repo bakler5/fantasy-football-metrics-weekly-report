@@ -1,5 +1,5 @@
-__author__ = "Wren J. R. (uberfastman)"
-__email__ = "uberfastman@uberfastman.dev"
+__author__ = "Josh Bachler (fork maintainer); original: Wren J. R. (uberfastman)"
+__email__ = "bakler5@gmail.com"
 
 import sys
 
@@ -27,6 +27,7 @@ from ffmwr.integrations.slack import SlackIntegration
 from ffmwr.report.builder import FantasyFootballReport
 from ffmwr.utilities.app import check_github_for_updates
 from ffmwr.utilities.logger import get_logger
+from ffmwr.utilities.exceptions import AppConfigError, NetworkError, DataUnavailableError, ExternalServiceError, UpdateError, FFMRError
 from ffmwr.utilities.settings import AppSettings, get_app_settings_from_env_file
 from ffmwr.utilities.utils import format_platform_display, normalize_dependency_package_name
 
@@ -62,193 +63,170 @@ def select_league(
     if not week_for_report:
         week_for_report = select_week(settings, use_default=use_default)
 
-    if not league_id:
-        if not use_default:
-            time.sleep(0.25)
-            selection = input(
-                f"{Fore.YELLOW}Generate report for default league? "
-                f"({Fore.GREEN}y{Fore.YELLOW}/{Fore.RED}n{Fore.YELLOW}) -> {Style.RESET_ALL}"
-            ).lower()
+    while True:
+        if not league_id:
+            if not use_default:
+                time.sleep(0.25)
+                selection = input(
+                    f"{Fore.YELLOW}Generate report for default league? "
+                    f"({Fore.GREEN}y{Fore.YELLOW}/{Fore.RED}n{Fore.YELLOW}) -> {Style.RESET_ALL}"
+                ).lower()
+            else:
+                logger.info('Use-default is set to "true". Automatically running the report for the default league.')
+                selection = "y"
         else:
-            logger.info('Use-default is set to "true". Automatically running the report for the default league.')
-            selection = "y"
-    else:
-        selection = "selected"
+            selection = "selected"
 
-    if selection == "y":
-        return FantasyFootballReport(
-            settings=settings,
-            week_for_report=week_for_report,
-            platform=platform,
-            game_id=game_id,
-            season=season,
-            start_week=start_week,
-            playoff_prob_sims=playoff_prob_sims,
-            break_ties=break_ties,
-            dq_ce=dq_ce,
-            save_data=save_data,
-            refresh_feature_web_data=refresh_feature_web_data,
-            offline=offline,
-            test=test,
-        )
-    elif selection == "n":
-        league_id = input(
-            f"{Fore.YELLOW}What is the league ID of the league for which you want to generate a report? "
-            f"-> {Style.RESET_ALL}"
-        )
         try:
-            return FantasyFootballReport(
-                settings=settings,
-                week_for_report=week_for_report,
-                platform=platform,
-                league_id=league_id,
-                game_id=game_id,
-                season=season,
-                start_week=start_week,
-                playoff_prob_sims=playoff_prob_sims,
-                break_ties=break_ties,
-                dq_ce=dq_ce,
-                save_data=save_data,
-                refresh_feature_web_data=refresh_feature_web_data,
-                offline=offline,
-                test=test,
-            )
+            if selection == "y":
+                return FantasyFootballReport(
+                    settings=settings,
+                    week_for_report=week_for_report,
+                    platform=platform,
+                    game_id=game_id,
+                    season=season,
+                    start_week=start_week,
+                    playoff_prob_sims=playoff_prob_sims,
+                    break_ties=break_ties,
+                    dq_ce=dq_ce,
+                    save_data=save_data,
+                    refresh_feature_web_data=refresh_feature_web_data,
+                    offline=offline,
+                    test=test,
+                )
+            elif selection == "n":
+                league_id = input(
+                    f"{Fore.YELLOW}What is the league ID of the league for which you want to generate a report? "
+                    f"-> {Style.RESET_ALL}"
+                )
+                return FantasyFootballReport(
+                    settings=settings,
+                    week_for_report=week_for_report,
+                    platform=platform,
+                    league_id=league_id,
+                    game_id=game_id,
+                    season=season,
+                    start_week=start_week,
+                    playoff_prob_sims=playoff_prob_sims,
+                    break_ties=break_ties,
+                    dq_ce=dq_ce,
+                    save_data=save_data,
+                    refresh_feature_web_data=refresh_feature_web_data,
+                    offline=offline,
+                    test=test,
+                )
+            elif selection == "selected":
+                return FantasyFootballReport(
+                    settings=settings,
+                    week_for_report=week_for_report,
+                    platform=platform,
+                    league_id=league_id,
+                    game_id=game_id,
+                    season=season,
+                    start_week=start_week,
+                    playoff_prob_sims=playoff_prob_sims,
+                    break_ties=break_ties,
+                    dq_ce=dq_ce,
+                    save_data=save_data,
+                    refresh_feature_web_data=refresh_feature_web_data,
+                    offline=offline,
+                    test=test,
+                )
+            else:
+                logger.warning('You must select either "y" or "n".')
+                time.sleep(0.25)
         except IndexError:
-            logger.error("The league ID you have selected is not valid.")
-            select_league(
-                settings,
-                use_default,
-                platform,
-                game_id,
-                None,
-                season,
-                start_week,
-                week_for_report,
-                break_ties,
-                playoff_prob_sims,
-                dq_ce,
-                save_data,
-                refresh_feature_web_data,
-                offline,
-                test,
-            )
-    elif selection == "selected":
-        return FantasyFootballReport(
-            settings=settings,
-            week_for_report=week_for_report,
-            platform=platform,
-            league_id=league_id,
-            game_id=game_id,
-            season=season,
-            start_week=start_week,
-            playoff_prob_sims=playoff_prob_sims,
-            break_ties=break_ties,
-            dq_ce=dq_ce,
-            save_data=save_data,
-            refresh_feature_web_data=refresh_feature_web_data,
-            offline=offline,
-            test=test,
-        )
-    else:
-        logger.warning('You must select either "y" or "n".')
-        time.sleep(0.25)
-        select_league(
-            settings,
-            use_default,
-            platform,
-            game_id,
-            None,
-            season,
-            start_week,
-            week_for_report,
-            break_ties,
-            playoff_prob_sims,
-            dq_ce,
-            save_data,
-            refresh_feature_web_data,
-            offline,
-            test,
-        )
+            logger.error("The league ID you have selected is not valid. Please try again.")
+            league_id = None
 
 
 def select_platform(settings: AppSettings, use_default: bool = False) -> str:
-    if not use_default:
-        time.sleep(0.25)
-        selection = input(
-            f"{Fore.YELLOW}Generate report for default platform? ({Fore.GREEN}y{Fore.YELLOW}/{Fore.RED}n{Fore.YELLOW}) "
-            f"-> {Style.RESET_ALL}"
-        ).lower()
-    else:
-        logger.info('Use-default is set to "true". Automatically running the report for the default platform.')
-        selection = "y"
-
-    if selection == "y":
-        if settings.platform in settings.supported_platforms_list:
-            return settings.platform
-        else:
-            logger.warning(
-                f'Generating fantasy football reports for the "{format_platform_display(settings.platform)}" fantasy '
-                f"football platform is not currently supported. Please change the settings in your .env file and try "
-                f"again."
-            )
-            sys.exit(1)
-    elif selection == "n":
-        chosen_platform = input(
-            f"{Fore.YELLOW}For which platform would you like to generate a report ? "
-            f"({Fore.GREEN}{f'{Fore.YELLOW}/{Fore.GREEN}'.join(settings.supported_platforms_list)}{Fore.YELLOW}) "
-            f"-> {Style.RESET_ALL}"
-        ).lower()
-
-        if chosen_platform in settings.supported_platforms_list:
-            return chosen_platform
-        else:
-            logger.warning(
-                f'Generating fantasy football reports for the "{format_platform_display(chosen_platform)}" fantasy '
-                f'football platform is not currently supported. Please select a valid platform from '
-                f'{"/".join(settings.supported_platforms_list)}. '
-                f'-> {Style.RESET_ALL}'
-            )
+    while True:
+        if not use_default:
             time.sleep(0.25)
-            return select_platform(settings, use_default=use_default)
-    else:
-        logger.warning('You must select either "y" or "n".')
-        time.sleep(0.25)
-        return select_platform(settings, use_default=use_default)
+            selection = input(
+                f"{Fore.YELLOW}Generate report for default platform? ({Fore.GREEN}y{Fore.YELLOW}/{Fore.RED}n{Fore.YELLOW}) "
+                f"-> {Style.RESET_ALL}"
+            ).lower()
+        else:
+            logger.info('Use-default is set to "true". Automatically running the report for the default platform.')
+            selection = "y"
+
+        if selection == "y":
+            if settings.platform in settings.supported_platforms_list:
+                return settings.platform
+            else:
+                message = (
+                    f'Generating fantasy football reports for the "{format_platform_display(settings.platform)}" fantasy '
+                    f"football platform is not currently supported. Please change the settings in your .env file and try "
+                    f"again."
+                )
+                logger.warning(message)
+                raise AppConfigError(message)
+        elif selection == "n":
+            chosen_platform = input(
+                f"{Fore.YELLOW}For which platform would you like to generate a report ? "
+                f"({Fore.GREEN}{f'{Fore.YELLOW}/{Fore.GREEN}'.join(settings.supported_platforms_list)}{Fore.YELLOW}) "
+                f"-> {Style.RESET_ALL}"
+            ).lower()
+
+            if chosen_platform in settings.supported_platforms_list:
+                return chosen_platform
+            else:
+                logger.warning(
+                    f'Generating fantasy football reports for the "{format_platform_display(chosen_platform)}" fantasy '
+                    f'football platform is not currently supported. Please select a valid platform from '
+                    f'{"/".join(settings.supported_platforms_list)}. '
+                    f'-> {Style.RESET_ALL}'
+                )
+                time.sleep(0.25)
+                continue
+        else:
+            logger.warning('You must select either "y" or "n".')
+            time.sleep(0.25)
+            continue
 
 
 def select_week(settings: AppSettings, use_default: bool = False) -> Optional[int]:
-    if not use_default:
-        time.sleep(0.25)
-        selection = input(
-            f"{Fore.YELLOW}Generate report for default week? ({Fore.GREEN}y{Fore.YELLOW}/{Fore.RED}n{Fore.YELLOW}) "
-            f"-> {Style.RESET_ALL}"
-        ).lower()
-    else:
-        logger.info(
-            'Use-default is set to "true". Automatically running the report for the default (most recent) week.'
-        )
-        selection = "y"
-
-    if selection == "y":
-        return None
-    elif selection == "n":
-        chosen_week = int(
-            input(
-                f"{Fore.YELLOW}For which week would you like to generate a report? "
-                f"({Fore.GREEN}1{Fore.YELLOW} - {Fore.GREEN}{settings.nfl_season_length}{Fore.YELLOW}) -> "
-                f"{Style.RESET_ALL}"
-            ).lower()
-        )
-        if 0 < chosen_week <= settings.nfl_season_length:
-            return chosen_week
-        else:
-            logger.warning(f"Please select a valid week number between 1 and {settings.nfl_season_length}.")
+    while True:
+        if not use_default:
             time.sleep(0.25)
-            return select_week(settings, use_default=use_default)
-    else:
-        logger.warning('You must select either "y" or "n".')
-        time.sleep(0.25)
-        return select_week(settings, use_default=use_default)
+            selection = input(
+                f"{Fore.YELLOW}Generate report for default week? ({Fore.GREEN}y{Fore.YELLOW}/{Fore.RED}n{Fore.YELLOW}) "
+                f"-> {Style.RESET_ALL}"
+            ).lower()
+        else:
+            logger.info(
+                'Use-default is set to "true". Automatically running the report for the default (most recent) week.'
+            )
+            selection = "y"
+
+        if selection == "y":
+            return None
+        elif selection == "n":
+            try:
+                chosen_week = int(
+                    input(
+                        f"{Fore.YELLOW}For which week would you like to generate a report? "
+                        f"({Fore.GREEN}1{Fore.YELLOW} - {Fore.GREEN}{settings.nfl_season_length}{Fore.YELLOW}) -> "
+                        f"{Style.RESET_ALL}"
+                    ).lower()
+                )
+            except ValueError:
+                logger.warning("Please input a valid integer for week.")
+                time.sleep(0.25)
+                continue
+
+            if 0 < chosen_week <= settings.nfl_season_length:
+                return chosen_week
+            else:
+                logger.warning(f"Please select a valid week number between 1 and {settings.nfl_season_length}.")
+                time.sleep(0.25)
+                continue
+        else:
+            logger.warning('You must select either "y" or "n".')
+            time.sleep(0.25)
+            continue
 
 
 def main() -> None:
@@ -268,7 +246,8 @@ def main() -> None:
         if dependency not in installed_dependencies:
             missing_dependency_count += 1
             logger.error(
-                f"MISSING DEPENDENCY: {dependency}. Please run `uv add {dependency}` and retry the report generation."
+                f"MISSING DEPENDENCY: {dependency}. Install with `uv add {dependency}` or `pip install {dependency}` "
+                f"and retry the report generation."
             )
 
     if missing_dependency_count > 0:
@@ -287,7 +266,7 @@ def main() -> None:
             "The Fantasy Football Metrics Weekly Report application automatically generates a report in the form of a "
             "PDF file that contains a host of metrics and rankings for teams in a given fantasy football league."
         ),
-        epilog="The FFWMR is developed and maintained by Wren J. R. (uberfastman).",
+        epilog="Private fork maintained by Josh Bachler.",
         formatter_class=lambda prog: HelpFormatter(prog, max_help_position=40, width=120),
         add_help=True,
     )
@@ -487,11 +466,12 @@ def main() -> None:
                 # upload PDF report directly to Slack
                 slack_response = slack_integration.upload_file(report_pdf)
             else:
-                logger.warning(
+                message = (
                     f'The ".env" file contains unsupported Slack setting: '
                     f'SLACK_POST_OR_FILE={post_or_file}. Please choose "post" or "file" and try again.'
                 )
-                sys.exit(1)
+                logger.warning(message)
+                raise AppConfigError(message)
 
             if slack_response and slack_response.get("ok"):
                 logger.info(f"Report {str(report_pdf)} successfully posted to Slack!")
@@ -517,11 +497,12 @@ def main() -> None:
                 # upload PDF report directly to GroupMe
                 groupme_response = groupme_integration.upload_file(report_pdf)
             else:
-                logger.warning(
+                message = (
                     f'The ".env" file contains unsupported GroupMe setting: '
                     f'GROUPME_POST_OR_FILE={post_or_file}. Please choose "post" or "file" and try again.'
                 )
-                sys.exit(1)
+                logger.warning(message)
+                raise AppConfigError(message)
 
             if groupme_response == 202 or groupme_response["meta"]["code"] == 201:
                 logger.info(f"Report {str(report_pdf)} successfully posted to GroupMe!")
@@ -548,11 +529,12 @@ def main() -> None:
                 # upload PDF report directly to Discord
                 discord_response = discord_integration.upload_file(report_pdf)
             else:
-                logger.warning(
+                message = (
                     f'The ".env" file contains unsupported Discord setting: '
                     f'DISCORD_POST_OR_FILE={post_or_file}. Please choose "post" or "file" and try again.'
                 )
-                sys.exit(1)
+                logger.warning(message)
+                raise AppConfigError(message)
 
             if discord_response and discord_response.get("type") == 0:
                 logger.info(f"Report {str(report_pdf)} successfully posted to Discord!")
@@ -564,4 +546,23 @@ def main() -> None:
 
 # RUN FANTASY FOOTBALL REPORT PROGRAM
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except AppConfigError as e:
+        logger.error(f"Configuration error: {e}")
+        sys.exit(1)
+    except (NetworkError, ExternalServiceError) as e:
+        logger.error(f"Network/service error: {e}")
+        sys.exit(1)
+    except DataUnavailableError as e:
+        logger.error(f"Data unavailable: {e}")
+        sys.exit(1)
+    except UpdateError as e:
+        logger.error(f"Update error: {e}")
+        sys.exit(1)
+    except FFMRError as e:
+        logger.error(f"Application error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.exception(f"Unexpected error: {e}")
+        sys.exit(1)

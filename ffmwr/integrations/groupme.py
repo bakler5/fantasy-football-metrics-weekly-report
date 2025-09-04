@@ -1,5 +1,4 @@
 import json
-import sys
 from pathlib import Path
 from time import sleep
 from typing import Dict, List, Optional, Union
@@ -10,6 +9,7 @@ from requests import get, post
 
 from ffmwr.integrations.base.integration import BaseIntegration
 from ffmwr.utilities.logger import get_logger
+from ffmwr.utilities.exceptions import ExternalServiceError
 from ffmwr.utilities.settings import AppSettings, get_app_settings_from_env_file
 
 logger = get_logger(__name__, propagate=False)
@@ -139,12 +139,13 @@ class GroupMeIntegration(BaseIntegration):
         elif self.settings.integration_settings.groupme_bot_or_user == "user":
             return self._post_as_user(message)
         else:
-            logger.warning(
+            message = (
                 f'The ".env" file contains unsupported GroupMe setting: '
                 f'GROUPME_BOT_OR_USER={self.settings.integration_settings.groupme_bot_or_user}. Please choose "bot" '
                 f'or "user" and try again.'
             )
-            sys.exit(1)
+            logger.warning(message)
+            raise ExternalServiceError(message)
 
     def upload_file(self, file_path: Path) -> Union[int, Dict]:
         logger.debug(f"Uploading file to GroupMe: \n{file_path}")
@@ -156,12 +157,13 @@ class GroupMeIntegration(BaseIntegration):
         elif self.settings.integration_settings.groupme_bot_or_user == "user":
             return self._post_as_user(message, file_path)
         else:
-            logger.warning(
+            message = (
                 f'The ".env" file contains unsupported GroupMe setting: '
                 f'GROUPME_BOT_OR_USER={self.settings.integration_settings.groupme_bot_or_user}. Please choose "bot" '
                 f'or "user" and try again.'
             )
-            sys.exit(1)
+            logger.warning(message)
+            raise ExternalServiceError(message)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
-__author__ = "Wren J. R. (uberfastman)"
-__email__ = "uberfastman@uberfastman.dev"
+__author__ = "Josh Bachler (fork maintainer); original: Wren J. R. (uberfastman)"
+__email__ = "bakler5@gmail.com"
 
 from datetime import datetime
 from pathlib import Path
@@ -102,7 +102,7 @@ class HighRollerFeature(BaseFeature):
         )
         headers = {"user-agent": user_agent}
 
-        response = requests.get(self.feature_web_base_url, headers=headers)
+        response = self._request_with_retries("GET", self.feature_web_base_url, headers=headers)
 
         html_soup = BeautifulSoup(response.text, "html.parser")
         logger.debug(f"Response URL: {response.url}")

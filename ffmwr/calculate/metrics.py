@@ -1,5 +1,5 @@
-__author__ = "Wren J. R. (uberfastman)"
-__email__ = "uberfastman@uberfastman.dev"
+__author__ = "Josh Bachler (fork maintainer); original: Wren J. R. (uberfastman)"
+__email__ = "bakler5@gmail.com"
 
 import itertools
 from collections import OrderedDict, defaultdict
@@ -893,11 +893,12 @@ class CalculateMetrics(object):
         self.get_ranks_for_metric(data_for_luck, power_ranked_teams, "luck_ranking")
 
         for team_rankings in power_ranked_teams.values():
+            # Use arithmetic mean instead of floor division for ranking aggregation
             team_rankings["power_ranking"] = (
                 team_rankings["score_ranking"]
                 + team_rankings["coaching_efficiency_ranking"]
                 + team_rankings["luck_ranking"]
-            ) // 3.0
+            ) / 3.0
         return power_ranked_teams
 
     @staticmethod

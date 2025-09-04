@@ -1,8 +1,10 @@
-__author__ = "Wren J. R. (uberfastman)"
-__email__ = "uberfastman@uberfastman.dev"
+__author__ = "Josh Bachler (fork maintainer); original: Wren J. R. (uberfastman)"
+__email__ = "bakler5@gmail.com"
 
 import json
 from abc import ABC, abstractmethod
+import time
+import requests
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Type, Union
@@ -156,3 +158,20 @@ class BaseFeature(ABC, FFMWRPythonObjectJson):
     @abstractmethod
     def _get_feature_data(self) -> None:
         raise NotImplementedError
+
+    # network helpers
+    def _request_with_retries(self, method: str, url: str, retries: int = 3, backoff: float = 0.5, timeout: int = 15, **kwargs):
+        session = requests.Session()
+        attempt = 0
+        last_exc = None
+        while attempt < retries:
+            try:
+                resp = session.request(method=method.upper(), url=url, timeout=timeout, **kwargs)
+                resp.raise_for_status()
+                return resp
+            except requests.RequestException as e:
+                last_exc = e
+                logger.debug(f"{self.feature_type_title} request failed (attempt {attempt + 1}/{retries}): {e}")
+                time.sleep(backoff * (2 ** attempt))
+                attempt += 1
+        raise last_exc

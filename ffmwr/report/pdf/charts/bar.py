@@ -1,5 +1,5 @@
 __author__ = "Wren J. R. (uberfastman)"
-__email__ = "uberfastman@uberfastman.dev"
+__email__ = "bakler5@gmail.com"
 
 # code snippets: http://www.reportlab.com/chartgallery/
 

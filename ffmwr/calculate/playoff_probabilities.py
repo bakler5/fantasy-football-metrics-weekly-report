@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-__author__ = "Wren J. R. (uberfastman)"
-__email__ = "uberfastman@uberfastman.dev"
+__author__ = "Josh Bachler (fork maintainer); original: Wren J. R. (uberfastman)"
+__email__ = "bakler5@gmail.com"
 
 # code snippets: https://github.com/cdtdev/ff_monte_carlo (originally written by https://github.com/cdtdev)
 

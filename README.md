@@ -1,32 +1,12 @@
-# Fantasy Football Metrics Weekly Report [![Stars](https://img.shields.io/github/stars/uberfastman/fantasy-football-metrics-weekly-report?style=social&label=Stars)](https://github.com/uberfastman/fantasy-football-metrics-weekly-report/stargazers) [![Forks](https://img.shields.io/github/forks/uberfastman/fantasy-football-metrics-weekly-report?style=social&label=Forks)](https://github.com/uberfastman/fantasy-football-metrics-weekly-report/network/members)
-
-[![Release](https://img.shields.io/github/v/release/uberfastman/fantasy-football-metrics-weekly-report)](https://github.com/uberfastman/fantasy-football-metrics-weekly-report/releases/latest)
-[![Last Release Date](https://img.shields.io/github/release-date/uberfastman/fantasy-football-metrics-weekly-report)](https://github.com/uberfastman/fantasy-football-metrics-weekly-report/releases/latest)
-[![Version](https://img.shields.io/github/v/tag/uberfastman/fantasy-football-metrics-weekly-report)](https://github.com/uberfastman/fantasy-football-metrics-weekly-report/tags)
-[![Last Commit](https://img.shields.io/github/last-commit/uberfastman/fantasy-football-metrics-weekly-report)](https://github.com/uberfastman/fantasy-football-metrics-weekly-report/commits/main)
-
-[![GitHub Workflow Status (with event)](https://img.shields.io/github/actions/workflow/status/uberfastman/fantasy-football-metrics-weekly-report/python-build.yml?color=brightgreen&label=build)](https://github.com/uberfastman/fantasy-football-metrics-weekly-report/actions/workflows/python-build.yml)
-[![License](https://img.shields.io/github/license/uberfastman/fantasy-football-metrics-weekly-report)](https://github.com/uberfastman/fantasy-football-metrics-weekly-report/blob/main/LICENSE)
-[![Issues](https://img.shields.io/github/issues/uberfastman/fantasy-football-metrics-weekly-report)](https://github.com/uberfastman/fantasy-football-metrics-weekly-report/issues)
-[![Pull Requests](https://img.shields.io/github/issues-pr/uberfastman/fantasy-football-metrics-weekly-report)](https://github.com/uberfastman/fantasy-football-metrics-weekly-report/pulls)
-
----
+# Fantasy Football Metrics Weekly Report (Private Fork)
 
 #### Fantasy Football Platform Support: [Yahoo](#yahoo-setup), [ESPN](#espn-setup), [Sleeper](#sleeper-setup), [Fleaflicker](#fleaflicker-setup), [CBS](#cbs-setup)
 
-***You can see an example of what a report looks like [here](resources/files/example_report.pdf)!***
+You can see an example of what a report looks like: `resources/files/example_report.pdf`.
 
 ---
 
-###### Do you like the app? Star the repository here on GitHub and please consider donating to help support its development!
-
-[![donate-paypal](resources/images/donate-paypal.png)](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=VZZCNLRHH9BQS)
-
-[<img src="resources/images/donate-paypal-qr.png" alt="donate-paypal-qr" width="200">](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=VZZCNLRHH9BQS)
-
----
-
-###### Interested in contributing to the project? <sub><sub>[![Help Wanted](https://img.shields.io/github/labels/uberfastman/fantasy-football-metrics-weekly-report/help%20wanted)](resources/documentation/README.md)</sub></sub>
+This is a private continuation of the original project, with upstream update checks disabled and various maintenance improvements.
 
 ---
 

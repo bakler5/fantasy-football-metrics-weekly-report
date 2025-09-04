@@ -1,5 +1,5 @@
-__author__ = "Wren J. R. (uberfastman)"
-__email__ = "uberfastman@uberfastman.dev"
+__author__ = "Josh Bachler (fork maintainer); original: Wren J. R. (uberfastman)"
+__email__ = "bakler5@gmail.com"
 
 import itertools
 import json
@@ -96,7 +96,7 @@ class BadBoyFeature(BaseFeature):
     def _get_feature_data(self) -> None:
         logger.debug("Retrieving bad boy feature data from the web.")
 
-        res = requests.get(self.feature_web_base_url)
+        res = self._request_with_retries("GET", self.feature_web_base_url)
         soup = BeautifulSoup(res.text, "html.parser")
         cdata = re.search("var sitedata = (.*);", soup.find(string=re.compile("CDATA"))).group(1)
         ajax_nonce = json.loads(cdata)["ajax_nonce"]
@@ -129,7 +129,7 @@ class BadBoyFeature(BaseFeature):
                 f'&searches={{"Team":"{team}"}}'
             )
 
-            res_json = requests.post(usa_today_nfl_arrest_url, data=body, headers=headers).json()
+            res_json = self._request_with_retries("POST", usa_today_nfl_arrest_url, headers=headers, data=body).json()
 
             arrests_data = res_json["data"]["Result"]
 
@@ -171,7 +171,7 @@ class BadBoyFeature(BaseFeature):
                         f'&searches={{"Team":"{team}"}}'
                     )
 
-                    r = requests.post(usa_today_nfl_arrest_url, data=body, headers=headers)
+                    r = self._request_with_retries("POST", usa_today_nfl_arrest_url, headers=headers, data=body)
                     resp_json = r.json()
 
                     arrests_data = resp_json["data"]["Result"]

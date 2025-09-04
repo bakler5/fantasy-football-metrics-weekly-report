@@ -1,5 +1,5 @@
-__author__ = "Wren J. R. (uberfastman)"
-__email__ = "uberfastman@uberfastman.dev"
+__author__ = "Josh Bachler (fork maintainer); original: Wren J. R. (uberfastman)"
+__email__ = "bakler5@gmail.com"
 
 import itertools
 from typing import List
@@ -242,9 +242,15 @@ class ReportData(object):
         self.ties_for_coaching_efficiency = metrics_calculator.get_ties_count(
             self.data_for_coaching_efficiency, "coaching_efficiency", self.break_ties
         )
-        self.num_first_place_for_coaching_efficiency_before_resolution = len(
-            [list(group) for key, group in itertools.groupby(self.data_for_coaching_efficiency, lambda x: x[0])][0]
-        )
+        # Determine ties-at-first correctly by evaluating the top CE value, excluding DQs
+        non_dq_efficiencies = [row for row in self.data_for_coaching_efficiency if row[3] != "DQ"]
+        if non_dq_efficiencies:
+            top_value = non_dq_efficiencies[0][3]
+            self.num_first_place_for_coaching_efficiency_before_resolution = sum(
+                1 for row in non_dq_efficiencies if row[3] == top_value
+            )
+        else:
+            self.num_first_place_for_coaching_efficiency_before_resolution = 0
 
         if self.ties_for_coaching_efficiency > 0:
             self.data_for_coaching_efficiency = metrics_calculator.resolve_coaching_efficiency_ties(

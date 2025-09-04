@@ -1,5 +1,5 @@
-__author__ = "Wren J. R. (uberfastman)"
-__email__ = "uberfastman@uberfastman.dev"
+__author__ = "Josh Bachler (fork maintainer); original: Wren J. R. (uberfastman)"
+__email__ = "bakler5@gmail.com"
 
 import json
 import logging
@@ -12,11 +12,13 @@ from typing import Any, Callable, Dict, Union
 
 import requests
 from requests.exceptions import HTTPError
+import time
 
 from ffmwr.models.base.model import BaseLeague
 from ffmwr.utilities.logger import get_logger
 from ffmwr.utilities.settings import AppSettings
 from ffmwr.utilities.utils import format_platform_display
+from ffmwr.utilities.exceptions import NetworkError
 
 logger = get_logger(__name__, propagate=False)
 
@@ -97,20 +99,26 @@ class BasePlatform(ABC):
             if pos_attributes.get("type") == "bench"
         ]
 
-    def query(self, url: str, headers: Dict[str, str] = None):
+    def _request_with_retries(self, method: str, url: str, headers: Dict[str, str] = None, retries: int = 3, backoff: float = 0.5, timeout: int = 30):
+        attempt = 0
+        last_exc = None
+        while attempt < retries:
+            try:
+                resp = requests.request(method=method.upper(), url=url, headers=headers, timeout=timeout)
+                resp.raise_for_status()
+                return resp
+            except requests.RequestException as e:
+                last_exc = e
+                logger.debug(f"{self.platform_display} request failed (attempt {attempt + 1}/{retries}): {e}")
+                time.sleep(backoff * (2 ** attempt))
+                attempt += 1
+        raise NetworkError(f"{self.platform_display} request failed after {retries} retries: {last_exc}")
+
+    def query(self, url: str, headers: Dict[str, str] = None, timeout: int = 30):
         logger.debug(f"Retrieving {self.platform_display} web data from endpoint: {url}")
-        response = requests.get(url, headers=headers)
-
-        try:
-            response.raise_for_status()
-        except HTTPError as e:
-            # log error and terminate query if status code is not 200
-            logger.error(f"REQUEST FAILED WITH STATUS CODE: {response.status_code} - {e}")
-            sys.exit(1)
-
+        response = self._request_with_retries("GET", url, headers=headers, timeout=timeout)
         response_json = response.json()
         logger.debug(f"Response (JSON): {response_json}")
-
         return response_json
 
     def _get_platform_position_mapping(self) -> Dict[str, Dict]:

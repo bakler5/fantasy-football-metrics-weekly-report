@@ -1,5 +1,5 @@
-__author__ = "Wren J. R. (uberfastman)"
-__email__ = "uberfastman@uberfastman.dev"
+__author__ = "Josh Bachler (fork maintainer); original: Wren J. R. (uberfastman)"
+__email__ = "bakler5@gmail.com"
 
 import os
 from collections import defaultdict
@@ -355,12 +355,7 @@ class FantasyFootballReport(object):
         report_title_text = f"{self.league.name} ({self.league_id}) Week {self.league.week_for_report} Report"
         report_footer_text = (
             f"<para alignment='center'>"
-            f"Report generated {datetime.now():%Y-%b-%d %H:%M:%S} for {self.platform_display} "
-            f'Fantasy Football league "{self.league.name}" with id {self.league_id} '
-            f'(<a href="{self.league.url}" color=blue><u>{self.league.url}</u></a>).'
-            f"<br></br><br></br><br></br>"
-            f"If you enjoy using the Fantasy Football Metrics Weekly Report app, please feel free help support its "
-            f"development below:"
+            f"{self.settings.report_settings.footer_text}"
             f"</para>"
         )
 

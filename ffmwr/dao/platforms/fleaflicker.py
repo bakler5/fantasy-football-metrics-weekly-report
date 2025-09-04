@@ -1,5 +1,5 @@
-__author__ = "Wren J. R. (uberfastman)"
-__email__ = "uberfastman@uberfastman.dev"
+__author__ = "Josh Bachler (fork maintainer); original: Wren J. R. (uberfastman)"
+__email__ = "bakler5@gmail.com"
 
 import datetime
 import logging
@@ -11,6 +11,7 @@ from typing import Callable, Dict, Union
 
 import requests
 from bs4 import BeautifulSoup
+from ffmwr.utilities.exceptions import NetworkError
 
 from ffmwr.models.base.model import BaseManager, BaseMatchup, BasePlayer, BaseRecord, BaseStat, BaseTeam
 from ffmwr.dao.platforms.base.platform import BasePlatform
@@ -58,8 +59,7 @@ class FleaflickerPlatform(BasePlatform):
     def _authenticate(self) -> None:
         pass
 
-    @staticmethod
-    def _scrape(url: str):
+    def _scrape(self, url: str):
         logger.debug(f"Scraping Fleaflicker data from endpoint: {url}")
 
         user_agent = (
@@ -67,7 +67,10 @@ class FleaflickerPlatform(BasePlatform):
             "Safari/605.1.15"
         )
         headers = {"user-agent": user_agent}
-        response = requests.get(url, headers)
+        try:
+            response = self._request_with_retries("GET", url, headers=headers, timeout=20)
+        except Exception as e:
+            raise NetworkError(f"Failed to scrape Fleaflicker URL {url}: {e}")
 
         html_soup = BeautifulSoup(response.text, "html.parser")
         logger.debug(f"Response (HTML): {html_soup}")

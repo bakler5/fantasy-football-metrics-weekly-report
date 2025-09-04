@@ -1,5 +1,5 @@
-__author__ = "Wren J. R. (uberfastman)"
-__email__ = "uberfastman@uberfastman.dev"
+__author__ = "Josh Bachler (fork maintainer); original: Wren J. R. (uberfastman)"
+__email__ = "bakler5@gmail.com"
 
 import json
 import logging
@@ -33,6 +33,7 @@ from ffmwr.report.pdf.charts.bar import HorizontalBarChart3DGenerator
 from ffmwr.report.pdf.charts.line import LineChartGenerator
 from ffmwr.report.pdf.charts.pie import BreakdownPieDrawing
 from ffmwr.utilities.logger import get_logger
+from ffmwr.utilities.exceptions import DataUnavailableError
 from ffmwr.utilities.settings import AppSettings
 from ffmwr.utilities.utils import truncate_cell_for_display
 from resources.documentation import descriptions
@@ -75,11 +76,12 @@ def get_player_image(
                         )
                         local_img_path = Path("resources") / "images" / "photo-not-available.png"
                 else:
-                    logger.error(
+                    message = (
                         f"FILE {local_img_jpg_path} DOES NOT EXIST. CANNOT LOAD DATA LOCALLY WITHOUT HAVING PREVIOUSLY "
                         f"SAVED DATA!"
                     )
-                    sys.exit(1)
+                    logger.error(message)
+                    raise DataUnavailableError(message)
 
             img = Image.open(local_img_path)
             if img.mode != "RGBA":
@@ -586,55 +588,58 @@ class PdfGenerator(object):
             [self.spacer_three_inch],
             [Paragraph(report_footer_text, self.text_style_normal)],
         ]
-        footer_data = [
-            [
-                [
-                    self.get_img(
-                        "resources/images/donate-paypal.png",
-                        hyperlink="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=VZZCNLRHH9BQS",
-                    )
-                ],
-                [
-                    self.get_img(
-                        "resources/images/donate-bitcoin.png",
-                        hyperlink="https://blockstream.info/address/bc1qataspvklhewtswm357m0677q4raag5new2xt3e",
-                    )
-                ],
-                [
-                    self.get_img(
-                        "resources/images/donate-ethereum.png",
-                        hyperlink="https://etherscan.io/address/0x5eAa522e66a90577D49e9E72f253EC952CDB4059",
-                    )
-                ],
-            ],
-            [
-                [
-                    self.get_img(
-                        "resources/images/donate-paypal-qr.png",
-                        hyperlink="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=VZZCNLRHH9BQS",
-                    )
-                ],
-                [
-                    self.get_img(
-                        "resources/images/donate-bitcoin-qr.png",
-                        hyperlink="https://blockstream.info/address/bc1qataspvklhewtswm357m0677q4raag5new2xt3e",
-                    )
-                ],
-                [
-                    self.get_img(
-                        "resources/images/donate-ethereum-qr.png",
-                        hyperlink="https://etherscan.io/address/0x5eAa522e66a90577D49e9E72f253EC952CDB4059",
-                    )
-                ],
-            ],
-            [
-                Paragraph("PayPal", self.text_style_small),
-                Paragraph("bc1qataspvklhewtswm357m0677q4raag5new2xt3e", self.text_style_small),
-                Paragraph("0x5eAa522e66a90577D49e9E72f253EC952CDB4059", self.text_style_small),
-            ],
-        ]
         self.report_footer_title = Table(footer_title, colWidths=7.75 * inch, style=self.title_style)
-        self.report_footer = Table(footer_data, colWidths=2.50 * inch, style=self.title_style)
+
+        self.report_footer = None
+        if self.settings.report_settings.show_donation_footer:
+            footer_data = [
+                [
+                    [
+                        self.get_img(
+                            "resources/images/donate-paypal.png",
+                            hyperlink="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=VZZCNLRHH9BQS",
+                        )
+                    ],
+                    [
+                        self.get_img(
+                            "resources/images/donate-bitcoin.png",
+                            hyperlink="https://blockstream.info/address/bc1qataspvklhewtswm357m0677q4raag5new2xt3e",
+                        )
+                    ],
+                    [
+                        self.get_img(
+                            "resources/images/donate-ethereum.png",
+                            hyperlink="https://etherscan.io/address/0x5eAa522e66a90577D49e9E72f253EC952CDB4059",
+                        )
+                    ],
+                ],
+                [
+                    [
+                        self.get_img(
+                            "resources/images/donate-paypal-qr.png",
+                            hyperlink="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=VZZCNLRHH9BQS",
+                        )
+                    ],
+                    [
+                        self.get_img(
+                            "resources/images/donate-bitcoin-qr.png",
+                            hyperlink="https://blockstream.info/address/bc1qataspvklhewtswm357m0677q4raag5new2xt3e",
+                        )
+                    ],
+                    [
+                        self.get_img(
+                            "resources/images/donate-ethereum-qr.png",
+                            hyperlink="https://etherscan.io/address/0x5eAa522e66a90577D49e9E72f253EC952CDB4059",
+                        )
+                    ],
+                ],
+                [
+                    Paragraph("PayPal", self.text_style_small),
+                    Paragraph("bc1qataspvklhewtswm357m0677q4raag5new2xt3e", self.text_style_small),
+                    Paragraph("0x5eAa522e66a90577D49e9E72f253EC952CDB4059", self.text_style_small),
+                ],
+            ]
+            self.report_footer = Table(footer_data, colWidths=2.50 * inch, style=self.title_style)
 
         # data for report
         self.report_data = report_data
@@ -1705,19 +1710,20 @@ class PdfGenerator(object):
         # document title
         elements.append(self.report_title)
         elements.append(self.spacer_tenth_inch)
-        donate_header_data = [
-            [
-                Paragraph(
-                    "Enjoying the app? Please consider donating to support its development:", self.text_style_italics
-                ),
-                self.get_img(
-                    "resources/images/donate.png",
-                    hyperlink="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=VZZCNLRHH9BQS",
-                ),
+        if self.settings.report_settings.show_donation_footer:
+            donate_header_data = [
+                [
+                    Paragraph(
+                        "Enjoying the app? Please consider donating to support its development:", self.text_style_italics
+                    ),
+                    self.get_img(
+                        "resources/images/donate.png",
+                        hyperlink="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=VZZCNLRHH9BQS",
+                    ),
+                ]
             ]
-        ]
-        elements.append(Table(donate_header_data, colWidths=[4.65 * inch, 1.00 * inch], style=self.header_style))
-        elements.append(self.spacer_tenth_inch)
+            elements.append(Table(donate_header_data, colWidths=[4.65 * inch, 1.00 * inch], style=self.header_style))
+            elements.append(self.spacer_tenth_inch)
 
         elements.append(self.add_page_break())
 
@@ -2271,7 +2277,8 @@ class PdfGenerator(object):
             elements.insert(4, toc)
 
         elements.append(self.report_footer_title)
-        elements.append(self.report_footer)
+        if self.report_footer is not None:
+            elements.append(self.report_footer)
 
         # build pdf
         logger.info(f"generating PDF ({str(filename_with_path).split('/')[-1]})...")

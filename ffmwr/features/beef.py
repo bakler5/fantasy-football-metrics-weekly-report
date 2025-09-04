@@ -1,5 +1,5 @@
-__author__ = "Wren J. R. (uberfastman)"
-__email__ = "uberfastman@uberfastman.dev"
+__author__ = "Josh Bachler (fork maintainer); original: Wren J. R. (uberfastman)"
+__email__ = "bakler5@gmail.com"
 
 import json
 from collections import OrderedDict
@@ -90,7 +90,7 @@ class BeefFeature(BaseFeature):
     def _get_feature_data(self):
         logger.debug("Retrieving beef feature data from the web.")
 
-        nfl_player_data = requests.get(self.feature_web_base_url).json()
+        nfl_player_data = self._request_with_retries("GET", self.feature_web_base_url).json()
         for player_sleeper_key, player_data_json in nfl_player_data.items():
             player_full_name = player_data_json.get("full_name", "")
             player_team_abbr = player_data_json.get("team")
