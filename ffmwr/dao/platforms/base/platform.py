@@ -22,9 +22,6 @@ from ffmwr.utilities.exceptions import NetworkError
 
 logger = get_logger(__name__, propagate=False)
 
-# Suppress platform API debug logging
-logger.setLevel(level=logging.INFO)
-
 
 # noinspection DuplicatedCode
 class BasePlatform(ABC):
@@ -99,12 +96,21 @@ class BasePlatform(ABC):
             if pos_attributes.get("type") == "bench"
         ]
 
-    def _request_with_retries(self, method: str, url: str, headers: Dict[str, str] = None, retries: int = 3, backoff: float = 0.5, timeout: int = 30):
+    def _request_with_retries(
+        self,
+        method: str,
+        url: str,
+        headers: Dict[str, str] = None,
+        retries: int = 3,
+        backoff: float = 0.5,
+        timeout: int = 30,
+        **kwargs,
+    ):
         attempt = 0
         last_exc = None
         while attempt < retries:
             try:
-                resp = requests.request(method=method.upper(), url=url, headers=headers, timeout=timeout)
+                resp = requests.request(method=method.upper(), url=url, headers=headers, timeout=timeout, **kwargs)
                 resp.raise_for_status()
                 return resp
             except requests.RequestException as e:

@@ -52,6 +52,7 @@ def select_league(
     refresh_feature_web_data: bool,
     offline: bool,
     test: bool,
+    show_optimal_lineup: bool = False,
 ) -> FantasyFootballReport:
     # set "use default" environment variable for access by fantasy football platforms
     if use_default:
@@ -93,6 +94,7 @@ def select_league(
                     refresh_feature_web_data=refresh_feature_web_data,
                     offline=offline,
                     test=test,
+                    show_optimal_lineup=show_optimal_lineup,
                 )
             elif selection == "n":
                 league_id = input(
@@ -114,6 +116,7 @@ def select_league(
                     refresh_feature_web_data=refresh_feature_web_data,
                     offline=offline,
                     test=test,
+                    show_optimal_lineup=show_optimal_lineup,
                 )
             elif selection == "selected":
                 return FantasyFootballReport(
@@ -131,6 +134,7 @@ def select_league(
                     refresh_feature_web_data=refresh_feature_web_data,
                     offline=offline,
                     test=test,
+                    show_optimal_lineup=show_optimal_lineup,
                 )
             else:
                 logger.warning('You must select either "y" or "n".')
@@ -365,6 +369,13 @@ def main() -> None:
         help="Break ties in metric rankings",
     )
     report_run_group.add_argument(
+        "-O",
+        "--show-optimal-lineup",
+        action="store_true",
+        required=False,
+        help="Log computed optimal lineup per team at INFO level",
+    )
+    report_run_group.add_argument(
         "-q",
         "--disqualify-coaching-efficiency",
         action="store_true",
@@ -406,6 +417,20 @@ def main() -> None:
         # [f"{' ' * (len(max(vars(args).keys(), key=len)) - len(k))}{k} = {v}" for k, v in vars(args).items()]
         [f"  {k}{'.' * (len(max(vars(args).keys(), key=len)) - len(k))}...{v}" for k, v in vars(args).items()]
     )
+    # also display resolved settings used when CLI args are None, to avoid confusion
+    resolved_settings = {
+        "platform": app_settings.platform,
+        "league_id": app_settings.league_id,
+        "season": app_settings.season,
+        "current_nfl_week": app_settings.current_nfl_week,
+        "week_for_report": app_settings.week_for_report,
+    }
+    settings_display = f"{f_str_newline}".join(
+        [
+            f"  {k}{'.' * (len(max(resolved_settings.keys(), key=len)) - len(k))}...{v}"
+            for k, v in resolved_settings.items()
+        ]
+    )
     # verification output message
     logger.info(
         f"{f_str_newline}"
@@ -414,6 +439,10 @@ def main() -> None:
         f"Fantasy Football report on {datetime.now():%b %-d, %Y at %-I:%M%p} with the following command line arguments:"
         f"{f_str_newline * 2}"
         f"{args_display}"
+        f"{f_str_newline * 2}"
+        f"Using resolved settings (when CLI args are None):"
+        f"{f_str_newline * 2}"
+        f"{settings_display}"
         f"{f_str_newline}"
     )
 
@@ -433,6 +462,7 @@ def main() -> None:
         args.refresh_feature_web_data,
         args.offline,
         args.test,
+        args.show_optimal_lineup,
     )
     report_pdf: Path = report.create_pdf_report()
 

@@ -241,6 +241,16 @@ class ReportSettings(CustomSettings):
         title=__qualname__,
         description="custom footer text displayed at the end of the PDF",
     )
+    best_of_rest_bool: bool = Field(
+        True,
+        title=__qualname__,
+        description="include Best of the Rest feature (free-agent optimal lineup and mock results)",
+    )
+    transactions_awards_bool: bool = Field(
+        True,
+        title=__qualname__,
+        description="include Transactions Awards (best/worst FA pickup, trade, drop, worst start/sit)",
+    )
 
     font: str = Field("helvetica", title=__qualname__, description="set font for report (defaults to Helvetica)")
     supported_fonts_list: List[str] = Field(

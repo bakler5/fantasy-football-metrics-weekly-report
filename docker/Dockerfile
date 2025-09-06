@@ -1,11 +1,11 @@
-ARG PYTHON_VERSION_MAJOR=$PYTHON_VERSION_MAJOR
-ARG PYTHON_VERSION_MINOR=$PYTHON_VERSION_MINOR
-ARG PYTHON_VERSION_PATCH=$PYTHON_VERSION_PATCH
+ARG PYTHON_VERSION_MAJOR=3
+ARG PYTHON_VERSION_MINOR=13
+ARG PYTHON_VERSION_PATCH=1
 
 # set base image
 FROM python:${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}.${PYTHON_VERSION_PATCH}-slim
 
-LABEL "org.opencontainers.image.source"="https://github.com/uberfastman/fantasy-football-metrics-weekly-report"
+LABEL "org.opencontainers.image.source"="private-fork"
 
 # update package index list
 RUN apt-get update -y && \
@@ -25,15 +25,15 @@ WORKDIR /opt/ffmwr
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
-# copy the Python dependencies file to the working directory
-COPY ../requirements.txt .
+# copy the Python dependencies file to the working directory (relative to build context)
+COPY requirements.txt .
 
 # install dependencies
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
-## copy the project root contents to the working directory
-COPY .. .
+## copy the project root contents to the working directory (excluding items in .dockerignore)
+COPY . .
 
 RUN chmod +x ./docker/docker-entrypoint.sh
 

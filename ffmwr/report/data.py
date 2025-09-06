@@ -6,6 +6,7 @@ from typing import List
 
 from ffmwr.calculate.metrics import CalculateMetrics
 from ffmwr.calculate.points_by_position import PointsByPosition
+from ffmwr.calculate.coaching_efficiency import CoachingEfficiency
 from ffmwr.models.base.model import BaseLeague, BaseMatchup, BaseTeam
 from ffmwr.utilities.app import add_report_team_stats, get_inactive_players
 from ffmwr.utilities.logger import get_logger
@@ -28,6 +29,7 @@ class ReportData(object):
         break_ties: bool = False,
         dq_ce: bool = False,
         testing: bool = False,
+        show_optimal_lineup: bool = False,
     ):
         logger.debug("Instantiating report data.")
 
@@ -46,7 +48,15 @@ class ReportData(object):
 
         self.teams_results = {
             team.team_id: add_report_team_stats(
-                settings, team, league, week_counter, metrics_calculator, metrics, dq_ce, inactive_players
+                settings,
+                team,
+                league,
+                week_counter,
+                metrics_calculator,
+                metrics,
+                dq_ce,
+                inactive_players,
+                show_optimal_lineup,
             )
             for team in league.teams_by_week.get(str(week_counter)).values()
         }
@@ -101,6 +111,24 @@ class ReportData(object):
         self.data_for_season_weekly_top_scorers = None
         self.data_for_season_weekly_low_scorers = None
         self.data_for_season_weekly_highest_ce = None
+        # Transactions & lineup awards (initial implementation focuses on worst start/sit)
+        self.transactions_awards_worst_startsit = []
+        self.transactions_awards_best_fa_pickups = []  # single row
+        self.transactions_awards_worst_fa_pickups = []  # single row
+        self.transactions_awards_best_fa_pickups_hm = None
+        self.transactions_awards_worst_fa_pickups_hm = None
+        self.transactions_awards_best_drops = []  # single row
+        self.transactions_awards_worst_drops = []  # single row
+        self.transactions_awards_best_trades = []  # single row
+        self.transactions_awards_worst_trades = []  # single row
+        # Best of the Rest (optional)
+        self.best_of_rest_lineup = None
+        self.best_of_rest_total = None
+        self.best_of_rest_week_results = None
+        self.best_of_rest_week_record = None
+        self.best_of_rest_season_record = None
+        # season-to-date trade leader (set in builder)
+        self.transactions_awards_best_trade_season = []
 
         # current standings data
         self.data_for_current_standings = metrics_calculator.get_standings_data(league)
@@ -114,6 +142,11 @@ class ReportData(object):
 
         # current median standings data
         self.data_for_current_median_standings = metrics_calculator.get_median_standings_data(league)
+        # expose week median for the report week (if available from platform mapping)
+        try:
+            self.week_median_for_report = league.median_score_by_week.get(str(week_for_report))
+        except Exception:
+            self.week_median_for_report = None
 
         if league.num_playoff_slots > 0:
             # playoff probabilities data
@@ -129,6 +162,58 @@ class ReportData(object):
             )
         else:
             self.data_for_playoff_probs = None
+
+        # Best of the Rest for this week (if free agents available)
+        try:
+            free_agents = league.free_agents_by_week.get(str(week_counter), {})
+            if free_agents and settings.report_settings.best_of_rest_bool:
+                logger.info(
+                    f"Best of the Rest: week {week_counter} has {len(free_agents)} raw free agents prior to filtering."
+                )
+                # filter out any players who are rostered this week
+                rostered_ids = set(league.players_by_week.get(str(week_counter), {}).keys())
+                filtered_fas = [p for pid, p in free_agents.items() if str(pid) not in rostered_ids]
+                logger.info(
+                    f"Best of the Rest: week {week_counter} after filtering rostered -> {len(filtered_fas)} free agents."
+                )
+                if not filtered_fas:
+                    raise ValueError("No eligible free agents after filtering out rostered players.")
+
+                ce = CoachingEfficiency(league)
+                optimal_lineup, optimal_total = ce.compute_optimal_lineup_for_roster(filtered_fas)
+
+                # lineup rows: Position, Player, NFL Team, Points
+                lineup_rows = []
+                for pos, slot in optimal_lineup.items():
+                    for assigned in slot.assigned_players:
+                        lineup_rows.append([pos, assigned.full_name, assigned.nfl_team_abbr, f"{assigned.points:.2f}"])
+
+                # mock results vs each team
+                week_results = []
+                wins = ties = losses = 0
+                for team in league.teams_by_week.get(str(week_counter)).values():
+                    team_pts = float(team.points)
+                    if optimal_total > team_pts:
+                        result = "W"
+                        wins += 1
+                    elif optimal_total < team_pts:
+                        result = "L"
+                        losses += 1
+                    else:
+                        result = "T"
+                        ties += 1
+                    week_results.append([team.name, f"{team_pts:.2f}", f"{optimal_total:.2f}", result])
+
+                self.best_of_rest_lineup = lineup_rows
+                self.best_of_rest_total = f"{optimal_total:.2f}"
+                self.best_of_rest_week_results = week_results
+                self.best_of_rest_week_record = (wins, losses, ties)
+                logger.info(
+                    f"Best of the Rest: week {week_counter} optimal total {optimal_total:.2f}, record {wins}-{losses}"
+                    f"{f'-{ties}' if ties else ''}."
+                )
+        except Exception as e:
+            logger.debug(f"Best of the Rest unavailable for week {week_counter}: {e}")
 
         # z-scores data
         self.data_for_z_scores = []
@@ -218,6 +303,297 @@ class ReportData(object):
         self.data_for_high_roller_rankings = metrics_calculator.get_high_roller_data(
             sorted(self.teams_results.values(), key=lambda x: x.fines_total, reverse=True)
         )
+
+        # Transactions & Lineup Awards (compute for the current week)
+        try:
+            # Only evaluate on the actual report week (not historical aggregation loop)
+            if int(week_counter) == int(week_for_report):
+                bench_positions = set(self.bench_positions or [])
+                awards_rows = []
+
+                for team in self.league.teams_by_week.get(str(week_counter), {}).values():
+                    # collect starters and bench with available points
+                    starters = []
+                    bench = []
+                    for player in team.roster:
+                        try:
+                            pts = float(player.points)
+                        except Exception:
+                            pts = 0.0
+                        sel_pos = player.selected_position
+                        if not sel_pos:
+                            continue
+                        if sel_pos in bench_positions:
+                            bench.append((player, pts))
+                        else:
+                            starters.append((player, pts))
+
+                    # find the single worst start/sit opportunity for this team respecting eligibility
+                    max_delta = 0.0
+                    worst_b = None
+                    worst_s = None
+                    worst_b_pts = 0.0
+                    worst_s_pts = 0.0
+                    for b, b_pts in bench:
+                        # eligible positions include base and flex entries populated during platform mapping
+                        eligible_positions = b.eligible_positions or set()
+                        for s, s_pts in starters:
+                            if s.selected_position in eligible_positions:
+                                delta = b_pts - s_pts
+                                if delta > max_delta:
+                                    max_delta = delta
+                                    worst_b = b
+                                    worst_s = s
+                                    worst_b_pts = b_pts
+                                    worst_s_pts = s_pts
+
+                    if max_delta > 0.0 and worst_b and worst_s:
+                        awards_rows.append(
+                            [
+                                team.name,
+                                team.manager_str,
+                                f"{worst_b.full_name} ({worst_b.primary_position}) {worst_b_pts:.2f}",
+                                f"{worst_s.full_name} ({worst_s.selected_position}) {worst_s_pts:.2f}",
+                                f"{max_delta:.2f}",
+                            ]
+                        )
+
+                # select single highest delta across league
+                awards_rows.sort(key=lambda r: float(r[-1]), reverse=True)
+                self.transactions_awards_worst_startsit = awards_rows[:1]
+
+                # Weekly FA pickups and drops using Fleaflicker activity
+                curr_week = int(week_counter)
+                curr_players = self.league.players_by_week.get(str(curr_week), {})
+                prev_players = self.league.players_by_week.get(str(curr_week - 1), {}) if curr_week > self.league.start_week else {}
+                curr_free_agents = self.league.free_agents_by_week.get(str(curr_week), {})
+                events = self.league.transactions_by_week.get(
+                    str(curr_week), {"adds": [], "claims": [], "drops": [], "trades": []}
+                )
+
+                # unify adds and claims as FA pickups
+                pickups = list(events.get("adds", [])) + list(events.get("claims", []))
+                fa_candidates = []  # (team_id, player_id, points)
+                drop_candidates = []  # (team_id, player_id, points)
+
+                # per-team roster lookups to check started/not
+                curr_team_objs = self.league.teams_by_week.get(str(curr_week), {})
+                team_rosters = {tid: {str(p.player_id): p for p in t.roster} for tid, t in curr_team_objs.items()}
+
+                # Build trade-received set for exclusion from FA
+                trade_received_by_team = {}
+                for tr in events.get("trades", []):
+                    ttid = str(tr.get("team_id"))
+                    rec_ids = [str(x) for x in tr.get("players_received", [])]
+                    trade_received_by_team.setdefault(ttid, set()).update(rec_ids)
+
+                for ev in pickups:
+                    tid = str(ev.get("team_id"))
+                    pid_s = str(ev.get("player_id"))
+                    # exclude players acquired via trade this week for that team
+                    if pid_s in trade_received_by_team.get(tid, set()):
+                        continue
+                    bp = curr_players.get(pid_s) or curr_players.get(int(pid_s)) if hasattr(curr_players, 'get') else None
+                    pts = float(bp.points) if bp else 0.0
+                    fa_candidates.append((tid, pid_s, pts))
+
+                for ev in events.get("drops", []):
+                    tid = str(ev.get("team_id"))
+                    pid_s = str(ev.get("player_id"))
+                    # points for the player this week either on another roster or as FA
+                    if curr_players.get(pid_s) or curr_players.get(int(pid_s)):
+                        bp = curr_players.get(pid_s) or curr_players.get(int(pid_s))
+                        pts = float(bp.points)
+                    elif curr_free_agents.get(pid_s):
+                        pts = float(curr_free_agents.get(pid_s).points)
+                    else:
+                        pts = 0.0
+                    drop_candidates.append((tid, pid_s, pts))
+
+                    # Map team_id -> (name, manager)
+                    team_lookup = {tid: (t.name, t.manager_str) for tid, t in curr_team_objs.items()}
+
+                    # IMPORTANT: Do NOT infer via roster diffs by default to avoid mis-dating historical changes
+                    # If desired in the future, add a settings flag to enable a diff-based fallback.
+
+                    # Helper to resolve a player's display name with broader fallbacks
+                    def resolve_name(pid_str: str) -> str:
+                        bp = (
+                            curr_players.get(pid_str)
+                            or (curr_players.get(int(pid_str)) if hasattr(curr_players, 'get') else None)
+                            or prev_players.get(pid_str)
+                            or (prev_players.get(int(pid_str)) if hasattr(prev_players, 'get') else None)
+                            or curr_free_agents.get(pid_str)
+                        )
+                        if bp and getattr(bp, 'full_name', None):
+                            return bp.full_name
+                        try:
+                            for wk_players in self.league.players_by_week.values():
+                                hit = wk_players.get(pid_str) or wk_players.get(int(pid_str))
+                                if hit and getattr(hit, 'full_name', None):
+                                    return hit.full_name
+                        except Exception:
+                            pass
+                        return str(pid_str)
+
+                    # Split FA pickups by whether they were STARTED this week
+                    started_fa = []   # (team_id, player_id, points)
+                    benched_fa = []   # honorable mention candidates
+                    bench_positions_set = bench_positions
+                    for tid, pid, pts in fa_candidates:
+                        troster = team_rosters.get(tid, {})
+                        p = troster.get(str(pid))
+                        if p and p.selected_position and p.selected_position not in bench_positions_set:
+                            started_fa.append((tid, pid, pts))
+                        else:
+                            benched_fa.append((tid, pid, pts))
+
+                    # Log detailed samples for troubleshooting
+                    try:
+                        sample_fa = ", ".join(
+                            [
+                                f"{team_lookup.get(tid, ('?', '?'))[0]}:{resolve_name(pid)}:{pts:.2f}"
+                                for tid, pid, pts in fa_candidates[:5]
+                            ]
+                        )
+                        sample_drop = ", ".join(
+                            [
+                                f"{team_lookup.get(tid, ('?', '?'))[0]}:{resolve_name(pid)}:{pts:.2f}"
+                                for tid, pid, pts in drop_candidates[:5]
+                            ]
+                        )
+                    except Exception:
+                        sample_fa = sample_drop = ""
+
+                    logger.info(
+                        f"Week {curr_week} awards candidates -> pickups(total={len(fa_candidates)}, "
+                        f"started={len(started_fa)}, drops={len(drop_candidates)}, trades={len(events.get('trades', []))}); "
+                        f"FA sample: [{sample_fa}] Drops sample: [{sample_drop}]"
+                    )
+
+                    # Best FA Pickup (started only). If none started, fall back to best benched pickup.
+                    if started_fa:
+                        best_tid, best_pid, best_pts = sorted(started_fa, key=lambda x: x[2], reverse=True)[0]
+                        if best_tid in team_lookup:
+                            self.transactions_awards_best_fa_pickups = [
+                                [team_lookup[best_tid][0], team_lookup[best_tid][1], resolve_name(str(best_pid)), f"{best_pts:.2f}"]
+                            ]
+                        # HM only if a benched pickup scored MORE than the started winner
+                        self.transactions_awards_best_fa_pickups_hm = None
+                        if benched_fa:
+                            hm_tid, hm_pid, hm_pts = sorted(benched_fa, key=lambda x: x[2], reverse=True)[0]
+                            if hm_tid in team_lookup and hm_pts > best_pts:
+                                self.transactions_awards_best_fa_pickups_hm = (
+                                    f"Honorable mention (not started): {team_lookup[hm_tid][0]} — {resolve_name(str(hm_pid))} ({hm_pts:.2f})"
+                                )
+                    elif benched_fa:
+                        # fallback winner when no started FA pickups
+                        best_tid, best_pid, best_pts = sorted(benched_fa, key=lambda x: x[2], reverse=True)[0]
+                        if best_tid in team_lookup:
+                            self.transactions_awards_best_fa_pickups = [
+                                [team_lookup[best_tid][0], team_lookup[best_tid][1], resolve_name(str(best_pid)), f"{best_pts:.2f}"]
+                            ]
+
+                    # Worst FA Pickup (started only). If none started, fall back to worst benched pickup.
+                    if started_fa:
+                        worst_tid, worst_pid, worst_pts = sorted(started_fa, key=lambda x: x[2])[0]
+                        if worst_tid in team_lookup:
+                            self.transactions_awards_worst_fa_pickups = [
+                                [team_lookup[worst_tid][0], team_lookup[worst_tid][1], resolve_name(str(worst_pid)), f"{worst_pts:.2f}"]
+                            ]
+                        # HM only if a benched pickup scored LESS than the started worst winner
+                        self.transactions_awards_worst_fa_pickups_hm = None
+                        if benched_fa:
+                            hm_tid2, hm_pid2, hm_pts2 = sorted(benched_fa, key=lambda x: x[2])[0]
+                            if hm_tid2 in team_lookup and hm_pts2 < worst_pts:
+                                self.transactions_awards_worst_fa_pickups_hm = (
+                                    f"Honorable mention (not started): {team_lookup[hm_tid2][0]} — {resolve_name(str(hm_pid2))} ({hm_pts2:.2f})"
+                                )
+                    elif benched_fa:
+                        worst_tid, worst_pid, worst_pts = sorted(benched_fa, key=lambda x: x[2])[0]
+                        if worst_tid in team_lookup:
+                            self.transactions_awards_worst_fa_pickups = [
+                                [team_lookup[worst_tid][0], team_lookup[worst_tid][1], resolve_name(str(worst_pid)), f"{worst_pts:.2f}"]
+                            ]
+
+                    # Build drop awards rows (best = lowest points by dropped player, worst = highest) — single winner
+                    if drop_candidates:
+                        drop_candidates.sort(key=lambda x: x[2])
+                        tid, pid, pts = drop_candidates[0]
+                        name = resolve_name(str(pid))
+                        if tid in team_lookup:
+                            self.transactions_awards_best_drops = [
+                                [team_lookup[tid][0], team_lookup[tid][1], name, f"{pts:.2f}"]
+                            ]
+                        drop_candidates.sort(key=lambda x: x[2], reverse=True)
+                        tid, pid, pts = drop_candidates[0]
+                        name = resolve_name(str(pid))
+                        if tid in team_lookup:
+                            self.transactions_awards_worst_drops = [
+                                [team_lookup[tid][0], team_lookup[tid][1], name, f"{pts:.2f}"]
+                            ]
+
+                    # Trade heuristic: owner changed between weeks in both directions for a pair
+                    # Build mappings for quick check
+                    prev_owner_by_pid = {
+                        str(pid): str(bp.owner_team_id) for pid, bp in prev_players.items() if bp and bp.owner_team_id
+                    }
+                    curr_owner_by_pid = {
+                        str(pid): str(bp.owner_team_id) for pid, bp in curr_players.items() if bp and bp.owner_team_id
+                    }
+                    prev_players_by_str = {str(pid): bp for pid, bp in prev_players.items()}
+                    curr_players_by_str = {str(pid): bp for pid, bp in curr_players.items()}
+
+                    # Aggregate acquired/sent per team
+                    acquired_by_team = {}
+                    sent_by_team = {}
+                    for pid_str, prev_owner in prev_owner_by_pid.items():
+                        curr_owner = curr_owner_by_pid.get(pid_str)
+                        if curr_owner and prev_owner and curr_owner != prev_owner:
+                            # owner changed this week
+                            # points for current week
+                            bp = curr_players_by_str.get(pid_str) or prev_players_by_str.get(pid_str)
+                            pts = float(bp.points) if bp else 0.0
+                            acquired_by_team.setdefault(curr_owner, []).append((pid_str, pts))
+                            sent_by_team.setdefault(prev_owner, []).append((pid_str, pts))
+
+                    # Compute weekly trades from normalized /FetchTrades events
+                    trade_rows = []
+                    for tr in events.get("trades", []):
+                        team_id = str(tr.get("team_id"))
+                        rec_ids = [str(x) for x in tr.get("players_received", [])]
+                        sent_ids = [str(x) for x in tr.get("players_sent", [])]
+                        # Exclude pick-only trades from weekly award
+                        if not rec_ids or not sent_ids:
+                            continue
+                        recv_pts = sum(
+                            float((curr_players.get(pid) or curr_players.get(int(pid))).points)
+                            for pid in rec_ids
+                            if (curr_players.get(pid) or curr_players.get(int(pid)))
+                        )
+                        sent_pts = sum(
+                            float((curr_players.get(pid) or curr_players.get(int(pid))).points)
+                            for pid in sent_ids
+                            if (curr_players.get(pid) or curr_players.get(int(pid)))
+                        )
+                        net = recv_pts - sent_pts
+                        def names(ids):
+                            out = []
+                            for pid in ids[:2]:
+                                out.append(resolve_name(pid))
+                            return ", ".join(out) if out else "—"
+                        detail = f"{names(rec_ids)} vs {names(sent_ids)}"
+                        if team_id in team_lookup:
+                            tname, mgr = team_lookup[team_id]
+                            trade_rows.append([tname, mgr, detail, f"{net:.2f}"])
+
+                    if trade_rows:
+                        trade_rows.sort(key=lambda r: float(r[-1]), reverse=True)
+                        self.transactions_awards_best_trades = trade_rows[:1]
+                        trade_rows.sort(key=lambda r: float(r[-1]))
+                        self.transactions_awards_worst_trades = trade_rows[:1]
+        except Exception as e:
+            logger.debug(f"Transactions awards (worst start/sit) unavailable for week {week_counter}: {e}")
 
         # ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
         # ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ COUNT METRIC TIES ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~
@@ -321,9 +697,10 @@ class ReportData(object):
         # power rankings data
         self.data_for_power_rankings = []
         for k_v in sorted(power_ranking_results.items(), key=lambda x: x[1]["power_ranking"]):
-            # season avg calc does something where it _keys off the second value in the array
+            # Display power rank to two decimals for readability
+            pretty_power_rank = f"{float(k_v[1]['power_ranking']):.2f}"
             self.data_for_power_rankings.append(
-                [k_v[1]["power_ranking"], power_ranking_results[k_v[0]]["name"], k_v[1]["manager_str"]]
+                [pretty_power_rank, power_ranking_results[k_v[0]]["name"], k_v[1]["manager_str"]]
             )
 
         # get number of power rankings ties and ties for first

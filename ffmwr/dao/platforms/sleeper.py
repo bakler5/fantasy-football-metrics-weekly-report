@@ -272,15 +272,14 @@ class SleeperPlatform(BasePlatform):
                             team_score = team_custom_points
                         else:
                             team_score = team["points"]
-                        if team_score:
+                        if team_score is not None:
                             scores.append(team_score)
 
                 weekly_median = round(median(scores), 2) if scores else None
-
-                if weekly_median:
-                    median_score_by_week[str(week_for_matchups)] = weekly_median
-                else:
-                    median_score_by_week[str(week_for_matchups)] = 0
+                median_score_by_week[str(week_for_matchups)] = weekly_median
+                logger.info(
+                    f"Median (Sleeper): week {week_for_matchups} scores={len(scores)} median={weekly_median if weekly_median is not None else 'N/A'}"
+                )
 
         rosters_by_week = {}
         for week_for_rosters in range(self.start_week, self.league.week_for_report + 1):
@@ -548,7 +547,7 @@ class SleeperPlatform(BasePlatform):
                         median_record = BaseRecord(team_id=base_team.team_id, team_name=base_team.name)
                         league_median_records_by_team[str(base_team.team_id)] = median_record
 
-                    if week_median:
+                    if week_median is not None:
                         # use this if you want the tie-break to be season total points over/under median score
                         median_record.add_points_for(base_team.points - week_median)
                         # use this if you want the tie-break to be current week points over/under median score
@@ -769,6 +768,22 @@ class SleeperPlatform(BasePlatform):
             self.league.teams_by_week.get(str(self.league.week_for_report)).values(),
             key=lambda x: x.current_record.rank,
         )
+
+        # Carry forward cumulative median record to week_for_report objects in case current week lacks a median
+        try:
+            wfr_key = str(self.league.week_for_report)
+            # reconstruct median records by team id from earlier loop
+            # (teams already have current_median_record set across weeks; carry to WFR instance if missing)
+            for team_id, team_obj in self.league.teams_by_week.get(wfr_key, {}).items():
+                if team_obj.current_median_record.get_wins() + team_obj.current_median_record.get_losses() + team_obj.current_median_record.get_ties() == 0:
+                    # search prior weeks for same team_id's median record
+                    for wk in range(self.start_week, self.league.week_for_report):
+                        prior = self.league.teams_by_week.get(str(wk), {}).get(str(team_id))
+                        if prior and (prior.current_median_record.get_wins() + prior.current_median_record.get_losses() + prior.current_median_record.get_ties()) > 0:
+                            team_obj.current_median_record = prior.current_median_record
+                            break
+        except Exception:
+            pass
 
         self.league.current_median_standings = sorted(
             self.league.teams_by_week.get(str(self.league.week_for_report)).values(),

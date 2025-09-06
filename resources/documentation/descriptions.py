@@ -111,3 +111,40 @@ weekly_highest_coaching_efficiency = (
     "Running list of each week's team with the highest coaching efficiency. Can be used for weekly highest coaching "
     "efficiency payouts."
 )
+
+# Best of the Rest feature descriptions
+best_of_the_rest = (
+    "Constructs an optimal lineup using only current free agents (not rostered by any fantasy team) for the selected "
+    "week, following your league's starting lineup rules and flex eligibility. The lineup is then matched against every "
+    "team in the league to produce a mock weekly record. Use this section to see how a team of free agents would have "
+    "fared in your league and to spot potential waiver gems."
+)
+
+best_of_the_rest_vs_teams = (
+    "Per-team results for the Best of the Rest mock matchup. Shows each team's weekly points compared to the free-agent "
+    "team's total and the result (W/L/T)."
+)
+
+team_vs_best_of_the_rest_season = (
+    "Season summary of every team's record against the Best of the Rest across all completed weeks in this report. "
+    "Useful for a quick, just-for-fun comparison to the free-agent pool over time."
+)
+
+transactions_awards = (
+    "League-wide awards for the selected week based on roster changes and lineup decisions: "
+    "<br/>\n" 
+    "- <b>Best FA Pickup</b>: Highest-scoring player added from free agents and used this week.\n" 
+    "<br/>\n" 
+    "- <b>Worst FA Pickup</b>: Lowest-scoring player added from free agents this week.\n" 
+    "<br/>\n" 
+    "- <b>Best/Worst Trade</b>: Net points gained/lost this week by each side of any trades completed prior to this week.\n" 
+    "<br/>\n" 
+    "- <b>Best/Worst Drop</b>: Points scored this week by players who were dropped prior to this week.\n" 
+    "<br/>\n" 
+    "- <b>Worst Start/Sit</b>: Largest positive difference between a bench player's points and an eligible starter's points on the same team."
+)
+
+weekly_awards = (
+    "League weekly awards highlighting notable roster moves and lineup decisions for the selected week, including "
+    "Best/Worst FA Pickup, Best/Worst Drop, Worst Start/Sit, and trade highlights."
+)

@@ -196,7 +196,15 @@ class CoachingEfficiency(object):
         return self._assign_player_to_optimal_slot(replaced_player, optimal_lineup)
 
     def execute_coaching_efficiency(
-        self, team_name, team_roster, team_points, positions_filled_active, week, inactive_players, dq_eligible=False
+        self,
+        team_name,
+        team_roster,
+        team_points,
+        positions_filled_active,
+        week,
+        inactive_players,
+        dq_eligible: bool = False,
+        show_optimal_lineup: bool = False,
     ):
         logger.debug(f'Calculating week {week} coaching efficiency for team "{team_name}".')
 
@@ -228,7 +236,8 @@ class CoachingEfficiency(object):
         except ZeroDivisionError:
             coaching_efficiency = 0.0
 
-        logger.debug(
+        log_fn = logger.info if show_optimal_lineup else logger.debug
+        log_fn(
             f"\n"
             f"               TEAM: {team_name}\n"
             f"             POINTS: {team_points}\n"
@@ -236,7 +245,7 @@ class CoachingEfficiency(object):
             f"COACHING EFFICIENCY: {coaching_efficiency}\n"
         )
         for pos, roster_slot in optimal_lineup.items():
-            logger.debug(
+            log_fn(
                 f"\n"
                 f"Position: {pos}\n"
                 f"  {roster_slot.assigned_count}/{roster_slot.max_allowed}: "
@@ -272,3 +281,24 @@ class CoachingEfficiency(object):
                 coaching_efficiency = "DQ"
 
         return coaching_efficiency, optimal_score
+
+    def compute_optimal_lineup_for_roster(self, roster: List[BasePlayer]):
+        """Compute optimal lineup and total points for an arbitrary set of players with eligibility.
+
+        Returns tuple of (optimal_lineup: Dict[str, RosterSlot], optimal_score: float)
+        """
+        optimal_lineup: Dict[str, RosterSlot] = {}
+        for pos, slots in self.roster_slot_counts.items():
+            if pos not in self.roster_bench_slots and slots > 0:
+                optimal_lineup[pos] = RosterSlot(pos, max_allowed=slots)
+
+        roster_by_points: List[BasePlayer] = sorted(
+            roster, key=lambda p: p.points, reverse=True
+        )
+        for player in roster_by_points:
+            self._assign_player_to_optimal_slot(player, optimal_lineup)
+
+        optimal_score = round(
+            sum([p.points for roster_slot in optimal_lineup.values() for p in roster_slot.assigned_players]), 2
+        )
+        return optimal_lineup, optimal_score

@@ -33,6 +33,7 @@ from ffmwr.report.pdf.charts.bar import HorizontalBarChart3DGenerator
 from ffmwr.report.pdf.charts.line import LineChartGenerator
 from ffmwr.report.pdf.charts.pie import BreakdownPieDrawing
 from ffmwr.utilities.logger import get_logger
+from ffmwr.report.pdf.theme import PdfTheme
 from ffmwr.utilities.exceptions import DataUnavailableError
 from ffmwr.utilities.settings import AppSettings
 from ffmwr.utilities.utils import truncate_cell_for_display
@@ -150,6 +151,35 @@ class HyperlinkedImage(ReportLabImage, object):
         super(HyperlinkedImage, self).drawOn(canvas, x, y, _sW)
 
 
+class OutlineAnchor(Flowable):
+    """Invisible flowable that creates a PDF outline entry and updates running header state.
+
+    Places a named bookmark on the current page and registers an outline entry
+    so PDF viewers show a left-pane navigation tree. Also stores the section
+    title on the canvas for use by the running header.
+    """
+
+    def __init__(self, title: str, key: str, level: int = 0):
+        super().__init__()
+        self.title = title
+        self.key = key
+        self.level = level
+
+    def wrap(self, availWidth, availHeight):
+        # zero-size, purely side-effect
+        return 0, 0
+
+    def draw(self):
+        try:
+            # bookmark and outline
+            self.canv.bookmarkPage(self.key)
+            self.canv.addOutlineEntry(self.title, self.key, level=self.level, closed=False)
+            # running header state
+            setattr(self.canv, "_current_section_title", self.title)
+        except Exception:
+            pass
+
+
 class PdfGenerator(object):
     # noinspection SpellCheckingInspection
     def __init__(
@@ -166,6 +196,7 @@ class PdfGenerator(object):
 
         # report settings
         self.settings = settings
+        self.theme = PdfTheme()
         self.season = season
         self.league_id = league.league_id
         self.playoff_slots = int(league.num_playoff_slots)
@@ -449,8 +480,9 @@ class PdfGenerator(object):
         self.text_style_small = ParagraphStyle(name="small", fontSize=5, alignment=TA_CENTER)
         self.text_style_invisible = ParagraphStyle(name="invisible", fontSize=0, textColor=colors.white)
 
-        # set word wrap
+        # set word wrap for table cell paragraphs
         self.text_style.wordWrap = "CJK"
+        self.text_style_normal.wordWrap = "CJK"
 
         title_table_style_list = [
             ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
@@ -473,19 +505,23 @@ class PdfGenerator(object):
         # Reportlab fonts: https://github.com/mattjmorrison/ReportLab/blob/master/src/reportlab/lib/fonts.py
         table_style_list = [
             ("TEXTCOLOR", (0, 1), (-1, 1), colors.green),
+            ("TEXTCOLOR", (0, 0), (-1, -1), self.theme.body_text_color),
             ("FONT", (0, 0), (-1, -1), self.font),
             ("FONT", (0, 1), (-1, 1), self.font_italic),
             ("FONT", (0, 0), (-1, 0), self.font_bold),
             ("FONTSIZE", (0, 0), (-1, -1), self.font_size - 2),
-            ("TOPPADDING", (0, 0), (-1, -1), 1),
+            ("TOPPADDING", (0, 0), (-1, -1), self.theme.padding_top),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), self.theme.padding_bottom),
+            ("LEFTPADDING", (0, 0), (-1, -1), self.theme.padding_left),
+            ("RIGHTPADDING", (0, 0), (-1, -1), self.theme.padding_right),
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.gray),
-            ("GRID", (0, 0), (-1, 0), 1.5, colors.black),
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.black),
-            ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.black),
-            ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
-            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, colors.whitesmoke]),  # alternate row colors
-            ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+            ("GRID", (0, 0), (-1, -1), self.theme.grid_thin, self.theme.grid_color),
+            ("GRID", (0, 0), (-1, 0), self.theme.grid_thick, self.theme.grid_outer),
+            ("BOX", (0, 0), (-1, -1), self.theme.grid_thin, self.theme.grid_outer),
+            ("INNERGRID", (0, 0), (-1, -1), self.theme.grid_thin, self.theme.grid_color),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [self.theme.row_alt_a, self.theme.row_alt_b]),
+            ("BACKGROUND", (0, 0), (-1, 0), self.theme.header_bg),
         ]
 
         # general table style
@@ -580,6 +616,12 @@ class PdfGenerator(object):
         self.weekly_low_scorer_headers = [["Week", "Team", "Manager", "Score"]]
         self.weekly_highest_ce_headers = [["Week", "Team", "Manager", "Coaching Efficiency (%)"]]
         self.tie_for_first_footer = "<i>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*Tie(s).</i>"
+
+        # transactions & lineup awards
+        self.transactions_awards_headers_startsit = [["Team", "Manager", "Benched Player", "Started Player", "Diff"]]
+        self.transactions_awards_headers_fa = [["Team", "Manager", "Player", "Pts"]]
+        self.transactions_awards_headers_drop = [["Team", "Manager", "Player", "Pts"]]
+        self.transactions_awards_headers_trade = [["Team", "Manager", "Players (Acq vs Sent)", "Net"]]
 
         # options: "document", "section", or None
         self.report_title = self.create_title(report_title_text, element_type="document")
@@ -696,15 +738,54 @@ class PdfGenerator(object):
         # team data for use on team specific stats pages
         self.teams_results = report_data.teams_results
 
+        # transactions & lineup awards (data)
+        self.awards_worst_startsit = getattr(report_data, "transactions_awards_worst_startsit", [])
+        self.awards_fa_best = getattr(report_data, "transactions_awards_best_fa_pickups", [])
+        self.awards_fa_worst = getattr(report_data, "transactions_awards_worst_fa_pickups", [])
+        self.awards_fa_best_hm = getattr(report_data, "transactions_awards_best_fa_pickups_hm", None)
+        self.awards_fa_worst_hm = getattr(report_data, "transactions_awards_worst_fa_pickups_hm", None)
+        self.awards_drop_best = getattr(report_data, "transactions_awards_best_drops", [])
+        self.awards_drop_worst = getattr(report_data, "transactions_awards_worst_drops", [])
+        self.awards_trade_best = getattr(report_data, "transactions_awards_best_trades", [])
+        self.awards_trade_worst = getattr(report_data, "transactions_awards_worst_trades", [])
+        self.awards_trade_season_best = getattr(report_data, "transactions_awards_best_trade_season", [])
+
+        # Best of the Rest data (optional)
+        self.bor_lineup = report_data.best_of_rest_lineup
+        self.bor_total = report_data.best_of_rest_total
+        self.bor_week_results = report_data.best_of_rest_week_results
+        self.bor_week_record = report_data.best_of_rest_week_record
+        self.bor_season_record = getattr(report_data, "best_of_rest_season_record", None)
+        self.bor_season_team_records = getattr(report_data, "best_of_rest_season_team_records", None)
+        # BOR-specific styles and widths
+        self.style_bor = deepcopy(self.style_no_highlight)
+        # lineup: right-align last column (Points)
+        self.style_bor.add("ALIGN", (3, 1), (3, -1), "RIGHT")
+        self.style_bor_vs = deepcopy(self.style_no_highlight)
+        # vs table: right-align Team Pts (col 1) and BOR Pts (col 2), center Result (col 3)
+        self.style_bor_vs.add("ALIGN", (1, 1), (2, -1), "RIGHT")
+        self.style_bor_vs.add("ALIGN", (3, 1), (3, -1), "CENTER")
+        # season table (2 columns)
+        self.widths_bor_season = [4.50 * inch, 3.25 * inch]
+
     # noinspection PyUnusedLocal
     def add_page_number(self, canvas: Canvas, doc: SimpleDocTemplate):
         """
         Add the page number
         """
         page_num = canvas.getPageNumber()
+        # footer page number
         text = f"Page {page_num}"
         canvas.setFont(self.font, self.font_size - 4)
         canvas.drawRightString(4.45 * inch, 0.25 * inch, text)
+        # running header with current section title (if available)
+        section = getattr(canvas, "_current_section_title", None)
+        if section:
+            try:
+                canvas.setFont(self.font_italic, self.font_size - 4)
+                canvas.drawString(0.5 * inch, 10.7 * inch, str(section))
+            except Exception:
+                pass
 
     def add_page_break(self):
         self.toc.add_toc_page()
@@ -812,10 +893,13 @@ class PdfGenerator(object):
         title = None
         if title_text:
             section_anchor = str(self.toc.get_current_anchor())
+            # Safely resolve description text for appendix; allow missing keys without error
+            desc_key = title_text.replace(" ", "_").replace("-", "_").lower()
+            desc_text = getattr(descriptions, desc_key, "")
             self.appendix.add_entry(
                 title_text,
                 section_anchor,
-                getattr(descriptions, title_text.replace(" ", "_").replace("-", "_").lower()),
+                desc_text,
             )
             appendix_anchor = self.appendix.get_last_entry_anchor()
             title = self.create_title(
@@ -1115,19 +1199,17 @@ class PdfGenerator(object):
                     if cell_ndx not in sesqui_max_chars_col_ndxs:
                         # truncate data cell contents to specified max characters and half of specified max characters
                         # if cell is a team manager header
-                        display_row.append(
-                            truncate_cell_for_display(
-                                cell,
-                                max_chars=self.settings.report_settings.max_data_chars,
-                                halve_max_chars=(cell_ndx == manager_header_ndx),
-                            )
+                        cell_text = truncate_cell_for_display(
+                            cell,
+                            max_chars=self.settings.report_settings.max_data_chars,
+                            halve_max_chars=(cell_ndx == manager_header_ndx),
                         )
+                        display_row.append(Paragraph(cell_text, self.text_style_normal))
                     else:
-                        display_row.append(
-                            truncate_cell_for_display(
-                                cell, max_chars=self.settings.report_settings.max_data_chars, sesqui_max_chars=True
-                            )
+                        cell_text = truncate_cell_for_display(
+                            cell, max_chars=self.settings.report_settings.max_data_chars, sesqui_max_chars=True
                         )
+                        display_row.append(Paragraph(cell_text, self.text_style_normal))
 
                 else:
                     display_row.append(cell)
@@ -1910,12 +1992,230 @@ class PdfGenerator(object):
                         "League standings when every team plays against the league median score each week.<br/>"
                     ),
                     subsubtitle_text=(
-                        f"WEEK {self.week_for_report} LEAGUE MEDIAN SCORE: {self.data_for_median_standings[0][-1]}"
+                        f"WEEK {self.week_for_report} LEAGUE MEDIAN SCORE: "
+                        f"{getattr(self.report_data, 'week_median_for_report', None) if getattr(self.report_data, 'week_median_for_report', None) is not None else '—'}"
                     ),
                 )
             )
             elements.append(self.spacer_twentieth_inch)
             elements.append(self.add_page_break())
+
+        # Best of the Rest (if available)
+        if self.bor_lineup and self.bor_week_results:
+            bor_headers = [["Pos", "Player", "NFL", "Points"]]
+            elements.append(
+                self.create_section(
+                    "Best of the Rest",
+                    "metrics",
+                    bor_headers,
+                    self.bor_lineup,
+                    self.style_bor,
+                    None,
+                    self.widths_04_cols_no_1,
+                    subtitle_text=(
+                        f"Week {self.week_for_report}: Optimal free-agent lineup total: <b>{self.bor_total}</b>. "
+                        f"Weekly record vs league: <b>{self.bor_week_record[0]}-{self.bor_week_record[1]}"
+                        f"{f'-{self.bor_week_record[2]}' if self.bor_week_record[2] else ''}</b>."
+                    ),
+                )
+            )
+            elements.append(self.spacer_twentieth_inch)
+
+            # season summary for BOR
+            if self.bor_season_record or self.bor_season_team_records:
+                if self.bor_season_record:
+                    wins, losses, ties = self.bor_season_record
+                    season_rec = f"{wins}-{losses}{f'-{ties}' if ties else ''}"
+                    subtitle = f"Season record vs league: <b>{season_rec}</b>."
+                else:
+                    subtitle = None
+
+                if self.bor_season_team_records:
+                    bor_season_headers = [["Team", "Season Record vs BOR"]]
+                    elements.append(
+                        self.create_section(
+                            "Team vs Best of the Rest (Season)",
+                            "metrics",
+                            bor_season_headers,
+                            self.bor_season_team_records,
+                            self.style_no_highlight,
+                            None,
+                            self.widths_bor_season,
+                            subtitle_text=subtitle,
+                        )
+                    )
+                    elements.append(self.spacer_twentieth_inch)
+
+            bor_vs_headers = [["Team", "Team Pts", "BOR Pts", "Result"]]
+            elements.append(
+                self.create_section(
+                    "Best of the Rest vs Teams",
+                    "metrics",
+                    bor_vs_headers,
+                    self.bor_week_results,
+                    self.style_bor_vs,
+                    None,
+                    self.widths_04_cols_no_1,
+                    subtitle_text=f"Week {self.week_for_report}",
+                )
+            )
+            elements.append(self.spacer_twentieth_inch)
+
+        # transactions & lineup awards section (if enabled and data available)
+        if getattr(self.settings.report_settings, "transactions_awards_bool", False):
+            awards_added = False
+            # Top-level Weekly Awards section heading
+            weekly_awards_title = self.create_title("Weekly Awards", element_type="section")
+            elements.append(weekly_awards_title)
+            elements.append(self.spacer_twentieth_inch)
+            # Best FA Pickup
+            best_fa_rows = self.awards_fa_best if self.awards_fa_best else [["—", "—", "—", "—"]]
+            elements.append(
+                self.create_section(
+                    "Best FA Pickup",
+                    "metrics",
+                    self.transactions_awards_headers_fa,
+                    best_fa_rows,
+                    self.style_no_highlight,
+                    None,
+                    self.widths_04_cols_no_1,
+                    subtitle_text=(
+                        (
+                            f"Week {self.week_for_report}" + (
+                                f"<br/><i>{self.awards_fa_best_hm}</i>" if getattr(self, "awards_fa_best_hm", None) else ""
+                            )
+                        )
+                        if self.awards_fa_best
+                        else f"No qualifying events — Week {self.week_for_report}"
+                    ),
+                )
+            )
+            elements.append(self.spacer_twentieth_inch)
+            awards_added = awards_added or bool(self.awards_fa_best)
+            # Worst FA Pickup
+            worst_fa_rows = self.awards_fa_worst if self.awards_fa_worst else [["—", "—", "—", "—"]]
+            elements.append(
+                self.create_section(
+                    "Worst FA Pickup",
+                    "metrics",
+                    self.transactions_awards_headers_fa,
+                    worst_fa_rows,
+                    self.style_no_highlight,
+                    None,
+                    self.widths_04_cols_no_1,
+                    subtitle_text=(
+                        (
+                            f"Week {self.week_for_report}" + (
+                                f"<br/><i>{self.awards_fa_worst_hm}</i>" if getattr(self, "awards_fa_worst_hm", None) else ""
+                            )
+                        )
+                        if self.awards_fa_worst
+                        else f"No qualifying events — Week {self.week_for_report}"
+                    ),
+                )
+            )
+            elements.append(self.spacer_twentieth_inch)
+            awards_added = awards_added or bool(self.awards_fa_worst)
+            # Best Drop
+            best_drop_rows = self.awards_drop_best if self.awards_drop_best else [["—", "—", "—", "—"]]
+            elements.append(
+                self.create_section(
+                    "Best Drop",
+                    "metrics",
+                    self.transactions_awards_headers_drop,
+                    best_drop_rows,
+                    self.style_no_highlight,
+                    None,
+                    self.widths_04_cols_no_1,
+                    subtitle_text=(
+                        f"Week {self.week_for_report}" if self.awards_drop_best else f"No qualifying events — Week {self.week_for_report}"
+                    ),
+                )
+            )
+            elements.append(self.spacer_twentieth_inch)
+            awards_added = awards_added or bool(self.awards_drop_best)
+            # Worst Drop
+            worst_drop_rows = self.awards_drop_worst if self.awards_drop_worst else [["—", "—", "—", "—"]]
+            elements.append(
+                self.create_section(
+                    "Worst Drop",
+                    "metrics",
+                    self.transactions_awards_headers_drop,
+                    worst_drop_rows,
+                    self.style_no_highlight,
+                    None,
+                    self.widths_04_cols_no_1,
+                    subtitle_text=(
+                        f"Week {self.week_for_report}" if self.awards_drop_worst else f"No qualifying events — Week {self.week_for_report}"
+                    ),
+                )
+            )
+            elements.append(self.spacer_twentieth_inch)
+            awards_added = awards_added or bool(self.awards_drop_worst)
+            # Worst Start/Sit
+            if self.awards_worst_startsit:
+                elements.append(
+                    self.create_section(
+                        "Worst Start/Sit",
+                        "metrics",
+                        self.transactions_awards_headers_startsit,
+                        self.awards_worst_startsit,
+                        self.style_no_highlight,
+                        None,
+                        self.widths_05_cols_no_1,
+                        subtitle_text=f"Week {self.week_for_report}",
+                    )
+                )
+                elements.append(self.spacer_twentieth_inch)
+                awards_added = True
+            # Best/Worst Trade (this week)
+            if self.awards_trade_best:
+                elements.append(
+                    self.create_section(
+                        "Best Trade (Net Points)",
+                        "metrics",
+                        self.transactions_awards_headers_trade,
+                        self.awards_trade_best,
+                        self.style_no_highlight,
+                        None,
+                        self.widths_04_cols_no_1,
+                        subtitle_text=f"Week {self.week_for_report}",
+                    )
+                )
+                elements.append(self.spacer_twentieth_inch)
+                awards_added = True
+            if self.awards_trade_worst:
+                elements.append(
+                    self.create_section(
+                        "Worst Trade (Net Points)",
+                        "metrics",
+                        self.transactions_awards_headers_trade,
+                        self.awards_trade_worst,
+                        self.style_no_highlight,
+                        None,
+                        self.widths_04_cols_no_1,
+                        subtitle_text=f"Week {self.week_for_report}",
+                    )
+                )
+                elements.append(self.spacer_twentieth_inch)
+                awards_added = True
+
+            # Season-to-date most lopsided trade leader
+            if self.awards_trade_season_best:
+                elements.append(
+                    self.create_section(
+                        "Most Lopsided Trade (Season-to-date)",
+                        "metrics",
+                        self.transactions_awards_headers_trade,
+                        self.awards_trade_season_best,
+                        self.style_no_highlight,
+                        None,
+                        self.widths_04_cols_no_1,
+                        subtitle_text=None,
+                    )
+                )
+                elements.append(self.spacer_twentieth_inch)
+                awards_added = True
 
         if self.settings.report_settings.league_power_rankings_bool:
             # power ranking

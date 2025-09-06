@@ -40,6 +40,7 @@ class FantasyFootballReport(object):
         refresh_feature_web_data=False,
         offline=False,
         test=False,
+        show_optimal_lineup: bool = False,
     ):
         logger.debug("Instantiating fantasy football report.")
 
@@ -79,6 +80,7 @@ class FantasyFootballReport(object):
 
         self.offline = offline
         self.test = test
+        self.show_optimal_lineup = show_optimal_lineup
 
         platform_data: BasePlatform = platform_data_factory(
             settings=self.settings,
@@ -154,6 +156,12 @@ class FantasyFootballReport(object):
         season_weekly_highest_ce = []
         season_weekly_teams_results = []
 
+        # Best of the Rest season aggregates
+        bor_season_wins = 0
+        bor_season_losses = 0
+        bor_season_ties = 0
+        bor_team_records = defaultdict(lambda: [0, 0, 0])  # team_name -> [wins_vs_BOR, losses_vs_BOR, ties]
+
         week_counter = self.league.start_week
         while week_counter <= self.league.week_for_report:
             week_for_report = self.league.week_for_report
@@ -181,6 +189,7 @@ class FantasyFootballReport(object):
                 break_ties=self.break_ties,
                 dq_ce=self.dq_ce,
                 testing=self.test,
+                show_optimal_lineup=self.show_optimal_lineup,
             )
 
             for team_id, team_result in report_data.teams_results.items():
@@ -213,6 +222,24 @@ class FantasyFootballReport(object):
             season_weekly_highest_ce.append(highest_ce)
 
             season_weekly_teams_results.append(report_data.teams_results)
+
+            # accumulate Best of the Rest results if available
+            if getattr(report_data, "best_of_rest_week_results", None):
+                w, l, t = report_data.best_of_rest_week_record
+                bor_season_wins += w
+                bor_season_losses += l
+                bor_season_ties += t
+
+                for team_name, team_pts, bor_pts, result in report_data.best_of_rest_week_results:
+                    # convert BOR result to team-vs-BOR record increment
+                    if result == "W":
+                        # BOR won -> team lost
+                        bor_team_records[team_name][1] += 1
+                    elif result == "L":
+                        # BOR lost -> team won
+                        bor_team_records[team_name][0] += 1
+                    else:
+                        bor_team_records[team_name][2] += 1
 
             ordered_team_names = []
             ordered_team_managers = []
@@ -338,6 +365,122 @@ class FantasyFootballReport(object):
                 report_data.data_for_season_avg_points_by_position
             )
         )
+
+        # finalize Best of the Rest season aggregates for PDF generator
+        if bor_season_wins + bor_season_losses + bor_season_ties > 0:
+            report_data.best_of_rest_season_record = (bor_season_wins, bor_season_losses, bor_season_ties)
+            # build rows: [Team, Record]
+            bor_team_rows = []
+            for team_name, (tw, tl, tt) in bor_team_records.items():
+                rec = f"{tw}-{tl}{f'-{tt}' if tt else ''}"
+                bor_team_rows.append([team_name, rec])
+
+            # sort by team wins descending then losses ascending
+            bor_team_rows.sort(key=lambda r: (-int(r[1].split('-')[0]), int(r[1].split('-')[1])))
+            report_data.best_of_rest_season_team_records = bor_team_rows
+
+        # Compute season-to-date most lopsided trade (net points) using normalized /FetchTrades events
+        try:
+            # 1) Collect unique trades per team with their execution week and player ids
+            trades_by_team: dict[str, dict[str, dict]] = {}
+            for wk in range(self.league.start_week, self.league.week_for_report + 1):
+                events = self.league.transactions_by_week.get(str(wk), {})
+                for tr in events.get("trades", []) or []:
+                    team_id = str(tr.get("team_id"))
+                    trade_id = str(tr.get("trade_id")) if tr.get("trade_id") else None
+                    rec_ids = [str(x) for x in tr.get("players_received", [])]
+                    sent_ids = [str(x) for x in tr.get("players_sent", [])]
+                    # require at least one pro player on both sides
+                    if not rec_ids or not sent_ids:
+                        logger.info(f"Trade Szn skip (pick-only side): team={team_id} trade={trade_id} week={wk} rec={len(rec_ids)} sent={len(sent_ids)}")
+                        continue
+                    if not trade_id:
+                        # without a stable id, include but key by tuple
+                        trade_id = f"wk{wk}:{','.join(rec_ids)}->{','.join(sent_ids)}"
+                    teams_trades = trades_by_team.setdefault(team_id, {})
+                    if trade_id not in teams_trades:
+                        teams_trades[trade_id] = {"exec_week": wk, "rec_ids": rec_ids, "sent_ids": sent_ids, "trade_ts": tr.get("trade_ts")}
+                    else:
+                        # keep earliest exec week, union players if normalization emitted partials
+                        teams_trades[trade_id]["exec_week"] = min(teams_trades[trade_id]["exec_week"], wk)
+                        teams_trades[trade_id]["rec_ids"] = list({*teams_trades[trade_id]["rec_ids"], *rec_ids})
+                        teams_trades[trade_id]["sent_ids"] = list({*teams_trades[trade_id]["sent_ids"], *sent_ids})
+
+            # 2) Carry-forward aggregation: for each trade, sum weekly nets from exec_week..report_week
+            trade_season_net: dict[str, float] = {}
+            trade_ids_by_team: dict[str, set[str]] = {}
+            for team_id, trades in trades_by_team.items():
+                for trade_id, info in trades.items():
+                    exec_wk = int(info["exec_week"])
+                    rec_ids = [str(x) for x in info["rec_ids"]]
+                    sent_ids = [str(x) for x in info["sent_ids"]]
+                    trade_ts = info.get("trade_ts")
+                    # seasonal window filter (optional)
+                    include = True
+                    if trade_ts:
+                        try:
+                            ts_dt = datetime.fromtimestamp(int(trade_ts) / 1000)
+                            start_dt = datetime(self.season, 3, 1)
+                            end_dt = datetime(self.season + 1, 2, 28, 23, 59, 59)
+                            include = start_dt <= ts_dt <= end_dt
+                        except Exception:
+                            include = True
+                    if not include:
+                        logger.info(f"Trade Szn skip (ts outside window): team={team_id} trade={trade_id} ts={trade_ts}")
+                        continue
+
+                    for wk in range(exec_wk, self.league.week_for_report + 1):
+                        curr_players = self.league.players_by_week.get(str(wk), {})
+                        recv_pts = sum(float((curr_players.get(pid) or curr_players.get(int(pid))).points) for pid in rec_ids if (curr_players.get(pid) or curr_players.get(int(pid))))
+                        sent_pts = sum(float((curr_players.get(pid) or curr_players.get(int(pid))).points) for pid in sent_ids if (curr_players.get(pid) or curr_players.get(int(pid))))
+                        net = recv_pts - sent_pts
+                        trade_season_net[team_id] = trade_season_net.get(team_id, 0.0) + net
+                        logger.info(f"Trade Szn add: team={team_id} trade={trade_id} week={wk} net={net:.2f} rec={len(rec_ids)} sent={len(sent_ids)} ts={trade_ts}")
+                    trade_ids_by_team.setdefault(team_id, set()).add(str(trade_id))
+
+            if trade_season_net:
+                # pick top team by net
+                leader_team_id, leader_net = max(trade_season_net.items(), key=lambda kv: kv[1])
+                # summarize only players that were part of contributing trades for the leader
+                contributing_ids = trade_ids_by_team.get(leader_team_id, set()) if trade_ids_by_team else set()
+
+                def resolve_name_any_week(pid: str) -> str:
+                    for wk_players in self.league.players_by_week.values():
+                        bp = wk_players.get(pid) or wk_players.get(int(pid))
+                        if bp and getattr(bp, 'full_name', None):
+                            return bp.full_name
+                    return str(pid)
+
+                rec_all = []
+                sent_all = []
+                for wk in range(self.league.start_week, self.league.week_for_report + 1):
+                    events = self.league.transactions_by_week.get(str(wk), {})
+                    for tr in events.get("trades", []) or []:
+                        if str(tr.get("team_id")) != str(leader_team_id):
+                            continue
+                        if contributing_ids and str(tr.get("trade_id")) not in contributing_ids:
+                            continue
+                        rec_ids = [str(x) for x in tr.get("players_received", [])]
+                        sent_ids = [str(x) for x in tr.get("players_sent", [])]
+                        for pid in rec_ids:
+                            rec_all.append(resolve_name_any_week(pid))
+                        for pid in sent_ids:
+                            sent_all.append(resolve_name_any_week(pid))
+
+                rec_str = ", ".join(rec_all[:2]) if rec_all else "—"
+                sent_str = ", ".join(sent_all[:2]) if sent_all else "—"
+                # include contributing trade ids for transparency
+                trade_ids_str = ", ".join(sorted(contributing_ids)) if contributing_ids else ""
+
+                curr_week_teams = self.league.teams_by_week.get(str(self.league.week_for_report), {})
+                if str(leader_team_id) in curr_week_teams:
+                    t = curr_week_teams[str(leader_team_id)]
+                    detail = f"{rec_str} vs {sent_str}{f' (trades: {trade_ids_str})' if trade_ids_str else ''}"
+                    report_data.transactions_awards_best_trade_season = [
+                        [t.name, t.manager_str, detail, f"{float(leader_net):.2f}"]
+                    ]
+        except Exception:
+            pass
 
         filename = (
             self.league.name.replace(" ", "-")

@@ -13,6 +13,7 @@ This is a private continuation of the original project, with upstream update che
 ### Table of Contents
 
 * <ins>***[Quickstart Guide](#quickstart-guide)***</ins>
+* [Docker Desktop](#docker-desktop)
 * [About](#about)
     * [Example Report](#example-report)
     * [Updating](#updating)
@@ -74,10 +75,10 @@ This is a private continuation of the original project, with upstream update che
 
     * ***Linux***: [Docker for Linux](https://docs.docker.com/engine/install/)
 
-4. Clone this app from GitHub (see [GitHub](#github) section for more details) to wherever you would like to store the app code on your computer (I recommend something like your user Documents folder).
+4. Clone this private fork from GitHub (see [GitHub](#github) for options) to a local folder.
 
     ```bash
-    git clone https://github.com/uberfastman/fantasy-football-metrics-weekly-report.git
+    git clone https://github.com/bakler5/fantasy-football-metrics-weekly-report
     ```
 
 5. Navigate into the cloned app directory within the command line by running:
@@ -92,23 +93,29 @@ This is a private continuation of the original project, with upstream update che
 
     * *Alternately, the first time you try running the app it will detect that you have no `.env` file, and will ask you if you wish to create one. Provide values for the remaining prompts (it will ask you for your* **fantasy football platform**, *your* **league ID**, *the* **NFL season (year)**, *and the* **current NFL week**, *so have those values ready.*
 
-8. Run the Fantasy Football Metrics Weekly Report app using Docker (see the [Running the Report Application](#running-the-report-application) section for more details). <sup>If on Windows, see the [Docker on Windows](#docker-on-windows) troubleshooting section if you encounter any permissions or access issues.</sup>
+8. Build and run with Docker (recommended). <sup>On Windows, see [Docker on Windows](#docker-on-windows) if you hit sharing/permissions issues.</sup>
 
-    * Run:
+    - Build the image:
 
-        ```bash
-        docker compose up -d
-        ```
+      ```bash
+      docker compose build app
+      ```
 
-      If you wish to see the Docker logs, then run `docker compose up` without the `-d` flag.
+    - Create your `.env` interactively (first run only):
 
-    * Wait for the above command to complete, then run:
+      ```bash
+      docker compose run --rm app python main.py
+      ```
 
-        ```bash
-        docker exec -it fantasy-football-metrics-weekly-report-app-1 python main.py
-        ```
+      Follow the prompts to create `.env` (platform, league id, season, current week, footer text, etc.).
 
-    * ***Follow the prompts to generate a report for your fantasy league!***
+    - Generate a report using your defaults:
+
+      ```bash
+      docker compose run --rm app python main.py -d
+      ```
+
+      PDFs are saved under `output/reports/` in your repo on the host.
 
 ---
 
@@ -202,22 +209,49 @@ Install [Docker](https://docs.docker.com/get-docker/) for your operating system:
 
 * ***Linux***: [Docker for Linux](https://docs.docker.com/engine/install/)
 
+<a name="docker-desktop"></a>
+#### Docker Desktop
+
+This repo includes a ready-to-use Docker setup.
+
+- Build the image:
+
+  ```bash
+  docker compose build app
+  ```
+
+- Run and create `.env` interactively (first run):
+
+  ```bash
+  docker compose run --rm app python main.py
+  ```
+
+- Generate a report from defaults (after `.env` exists):
+
+  ```bash
+  docker compose run --rm app python main.py -d
+  ```
+
+Notes:
+- The repo is bind-mounted into the container (`.:/opt/ffmwr`) so output appears under `output/` on your host.
+- ESPN flows requiring a real browser/driver are not containerized in this setup. Use Yahoo/Sleeper/Fleaflicker/CBS in Docker; ESPN can be run locally if needed.
+
 <a name="github"></a>
 #### GitHub
 
-Clone this project to whichever directory you wish to use for this app:
+Clone this private fork to a local directory:
 
-* If you do ***not*** have an existing account on GitHub and do ***not*** wish to create one, then use HTTPS by running:
+- HTTPS:
 
-    ```bash
-    git clone https://github.com/uberfastman/fantasy-football-metrics-weekly-report.git
-    ```
+  ```bash
+  git clone https://github.com/bakler5/fantasy-football-metrics-weekly-report
+  ```
 
-* If you already have an account on [GitHub](https://github.com), then it is recommended you use [SSH to connect with GitHub](https://help.github.com/en/articles/connecting-to-github-with-ssh) by running:
+- SSH:
 
-    ```bash
-    git clone git@github.com:uberfastman/fantasy-football-metrics-weekly-report.git
-    ```
+  ```bash
+  git clone git@github.com:bakler5/fantasy-football-metrics-weekly-report.git
+  ```
 
 ---
 
@@ -388,33 +422,17 @@ CBS has a public API that was once documented, the last version of which can be 
 <a name="running-the-report-application"></a>
 ### Running the Report Application
 
-1. Make sure you have updated the default league ID (`LEAGUE_ID` in the `.env` file) to your own league id. Please see the respective setup instructions for your chosen platform for directions on how to find your league ID.
+1. Update your `.env` with your platform and `LEAGUE_ID` (see platform-specific setup to locate your league id).
 
-2. From within the application directory (you should already be inside the `fantasy-football-metrics-weekly-report` directory) , run:
-
-    ```bash
-    docker compose up -d
-    ```
-
-   1. *FIRST TIME RUNNING*: The first time you run the above command, you must wait for the Docker image to be pulled from the [GitHub Container Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry). You will see output containing progress bars as the image layers are downloaded.
-
-      **NOTE**: If you are running *Docker for Windows* and you see errors when trying to build the Docker container and/or run `docker compose up -d`, please go to the [Docker on Windows](#docker-on-windows) section in [Troubleshooting](#troubleshooting) for workarounds!
-
-   2. *ALL RUNS*: After the initial run of the Docker container, you will not see all the image pull output as you did the first time. However, for all runs you will know when the app is ready when you see the below output:
-
-       ```bash
-       fantasy-football-metrics-weekly-report-app-1  | Fantasy Football Metrics Weekly Report app is ready!
-       ```
-
-   3. The docker image is now running and ready for use!
-
-3. Run the report:
+2. Generate a report (recommended one-off run):
 
     ```bash
-    docker exec -it fantasy-football-metrics-weekly-report-app-1 python main.py
+    docker compose run --rm app python main.py -d
     ```
 
-   1. You should see the following prompts:
+   - Omit `-d` for interactive prompts: `docker compose run --rm app python main.py`
+
+   You should see prompts like:
 
       1. `Generate report for default platform? (y/n) ->`
 
@@ -444,7 +462,14 @@ CBS has a public API that was once documented, the last version of which can be 
 
           4. Assuming the above went as expected, the application should now generate a report for your Yahoo fantasy league for the selected NFL week.
 
-4. When you are *done* using the report app, it is recommended that you *shut down* the Docker container in which it is running. You can do so by running:
+3. Optional persistent container workflow:
+
+    ```bash
+    docker compose up -d
+    docker compose exec app python main.py -d
+    ```
+
+4. When you are done, shut down the container (if using the persistent workflow):
 
     ```bash
     docker compose down
@@ -519,7 +544,7 @@ After completing the above setup and settings steps, you should now be able to s
 ##### Example:
 
 ```bash
-docker exec -it fantasy-football-metrics-weekly-report_app_1 python main.py -p fleaflicker -l 140941 -y 2020 -w 3 -m 1000 -s -r
+docker compose run --rm app python main.py -p fleaflicker -l 140941 -y 2020 -w 3 -m 1000 -s -r
 ```
 
 The above command runs the report with the following settings (which override anything set in the `.env` file):

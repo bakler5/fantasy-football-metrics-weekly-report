@@ -2,7 +2,13 @@
 services:
 
   app:
-    image: ghcr.io/uberfastman/fantasy-football-metrics-weekly-report:20.0.0
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        PYTHON_VERSION_MAJOR: 3
+        PYTHON_VERSION_MINOR: 13
+        PYTHON_VERSION_PATCH: 1
     platform: linux/amd64
     ports:
       - "5001:5000"

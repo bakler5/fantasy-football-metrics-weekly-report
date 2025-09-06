@@ -54,6 +54,8 @@ class BaseLeague(FFMWRPythonObjectJson):
         self.divisions: Dict[str, str] = {}
         self.has_median_matchup: bool = False
         self.median_score: float = 0.0
+        # optional: map of week -> weekly median (float or None)
+        self.median_score_by_week: Dict[str, float] = {}
         self.has_waiver_priorities: bool = False
         self.is_faab: bool = False
         self.faab_budget: int = 0
@@ -77,7 +79,10 @@ class BaseLeague(FFMWRPythonObjectJson):
         self.matchups_by_week: Dict[str, List[BaseMatchup]] = {}
         self.teams_by_week: Dict[str, Dict[str, BaseTeam]] = {}
         self.players_by_week: Dict[str, Dict[str, BasePlayer]] = {}
+        self.free_agents_by_week: Dict[str, Dict[str, BasePlayer]] = {}
         self.records_by_week: Dict[str, Dict] = {}
+        # normalized league activity per week for awards (adds/claims/drops/trades)
+        self.transactions_by_week: Dict[str, Dict[str, list]] = {}
 
         self.standings: List[BaseTeam] = []
         self.current_standings: List[BaseTeam] = []

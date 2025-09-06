@@ -51,7 +51,8 @@ def user_week_input_validation(settings: AppSettings, week: int, retrieved_curre
     current_year = current_date.year
     current_month = current_date.month
     # only validate user week if report is being run for current season
-    if current_year == int(season) or (current_year == (int(season) + 1) and current_month < 9):
+    season_is_current = current_year == int(season) or (current_year == (int(season) + 1) and current_month < 9)
+    if season_is_current:
         try:
             current_week = retrieved_current_week
             if week_for_report == "default":
@@ -94,6 +95,25 @@ def user_week_input_validation(settings: AppSettings, week: int, retrieved_curre
                 f'You must select either "default" or an integer from 1 to {settings.nfl_season_length} for the chosen '
                 f"week."
             )
+
+    # If week is still the literal string "default" at this point:
+    # - For current seasons, use the live retrieved_current_week - 1.
+    # - For past seasons, use settings.current_nfl_week - 1 (captured during .env creation for that season).
+    if isinstance(week_for_report, str) and str(week_for_report).lower() == "default":
+        if season_is_current:
+            try:
+                default_week = int(retrieved_current_week) - 1
+            except Exception:
+                default_week = settings.current_nfl_week - 1 if settings.current_nfl_week else settings.nfl_season_length
+        else:
+            default_week = settings.current_nfl_week - 1 if settings.current_nfl_week else settings.nfl_season_length
+
+        if default_week < 1:
+            default_week = 1
+        if default_week > settings.nfl_season_length:
+            default_week = settings.nfl_season_length
+
+        week_for_report = default_week
 
     return int(week_for_report)
 
@@ -292,6 +312,7 @@ def add_report_team_stats(
     metrics: Dict[str, Any],
     dq_ce: bool,
     inactive_players: List[str],
+    show_optimal_lineup: bool = False,
 ) -> BaseTeam:
     team.name = metrics_calculator.decode_byte_string(team.name)
     bench_positions = league.bench_positions
@@ -361,6 +382,7 @@ def add_report_team_stats(
         int(week_counter),
         inactive_players,
         dq_eligible=dq_ce,
+        show_optimal_lineup=show_optimal_lineup,
     )
 
     # # retrieve luck and record
