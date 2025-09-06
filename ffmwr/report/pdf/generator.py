@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import sys
+import re
 import urllib.request
 from copy import deepcopy
 from pathlib import Path
@@ -379,6 +380,7 @@ class PdfGenerator(object):
             "opensansemoji": 4,
             "sketchcollege": 5,
             "leaguegothic": 6,
+            "inter": 7,
         }
         if font_key in font_dict.keys():
             which_font = font_dict[font_key]
@@ -417,6 +419,11 @@ class PdfGenerator(object):
             self.font_bold = "LeagueGothicRegular"
             self.font_italic = "LeagueGothicItalic"
             self.font_bold_italic = "LeagueGothicItalic"
+        elif use_custom_font and which_font == 7:
+            self.font = "Inter"
+            self.font_bold = "Inter-Bold"
+            self.font_italic = "Inter-Italic"
+            self.font_bold_italic = "Inter-BoldItalic"
         else:
             # default to Helvetica
             self.font = "Helvetica"
@@ -424,11 +431,22 @@ class PdfGenerator(object):
             self.font_italic = "Helvetica-Oblique"
             self.font_bold_italic = "Helvetica-BoldOblique"
 
-        if use_custom_font:
+        if which_font == 7:
+            pdfmetrics.registerFont(TTFont(self.font, "resources/fonts/Inter-Regular.ttf"))
+            pdfmetrics.registerFont(TTFont(self.font_bold, "resources/fonts/Inter-Bold.ttf"))
+            pdfmetrics.registerFont(TTFont(self.font_italic, "resources/fonts/Inter-Italic.ttf"))
+            pdfmetrics.registerFont(TTFont(self.font_bold_italic, "resources/fonts/Inter-BoldItalic.ttf"))
+        elif use_custom_font:
             pdfmetrics.registerFont(TTFont(self.font, "resources/fonts/" + self.font + ".ttf"))
             pdfmetrics.registerFont(TTFont(self.font_bold, "resources/fonts/" + self.font + ".ttf"))
             pdfmetrics.registerFont(TTFont(self.font_italic, "resources/fonts/" + self.font + ".ttf"))
             pdfmetrics.registerFont(TTFont(self.font_bold_italic, "resources/fonts/" + self.font + ".ttf"))
+
+        # always register emoji fallback so <font name="OpenSansEmoji"> works
+        try:
+            pdfmetrics.registerFont(TTFont("OpenSansEmoji", "resources/fonts/OpenSansEmoji.ttf"))
+        except Exception:
+            pass
 
         styles._baseFontName = self.font
         self.stylesheet = styles.getSampleStyleSheet()
@@ -791,6 +809,29 @@ class PdfGenerator(object):
         self.toc.add_toc_page()
         return PageBreak()
 
+    EMOJI_RE = re.compile("[\U00010000-\U0010FFFF]")
+
+    def _emoji_safe(self, text: str) -> str:
+        if not text:
+            return text
+        return self.EMOJI_RE.sub(lambda m: f'<font name="OpenSansEmoji">{m.group(0)}</font>', str(text))
+
+    def auto_fit_column_widths(self, headers: List[List[Any]], rows: List[List[Any]]) -> List[float]:
+        """Compute column widths based on content, capped to theme max width."""
+        font_name = self.font
+        font_size = self.font_size - 2
+        columns = list(zip(*(headers + rows))) if rows else list(zip(*headers))
+        widths = []
+        for col in columns:
+            max_w = max(pdfmetrics.stringWidth(str(c), font_name, font_size) for c in col) + 6
+            widths.append(max_w)
+        total = sum(widths)
+        max_total = self.theme.table_max_width_in * inch
+        if total > max_total:
+            scale = max_total / total
+            widths = [w * scale for w in widths]
+        return widths
+
     def set_tied_values_style(self, num_ties: int, table_style_list: List[Tuple[Any]], metric_type: str):
         num_first_places = num_ties
         if metric_type == "scores":
@@ -891,6 +932,7 @@ class PdfGenerator(object):
             sesqui_max_chars_col_ndxs = []
 
         title = None
+        outline = None
         if title_text:
             section_anchor = str(self.toc.get_current_anchor())
             # Safely resolve description text for appendix; allow missing keys without error
@@ -902,6 +944,7 @@ class PdfGenerator(object):
                 desc_text,
             )
             appendix_anchor = self.appendix.get_last_entry_anchor()
+            outline = OutlineAnchor(title_text, section_anchor)
             title = self.create_title(
                 f"<a href = #page.html#{appendix_anchor} color=blue><u><b>{title_text}</b></u></a>",
                 element_type="section",
@@ -1068,6 +1111,8 @@ class PdfGenerator(object):
             data_table.setStyle(table_style_ties)
 
         table_content = []
+        if outline:
+            table_content.append([outline])
         if title_text:
             table_content.append([title])
 
@@ -1075,7 +1120,7 @@ class PdfGenerator(object):
             table_content.append(
                 [
                     Paragraph(
-                        f"<i>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{header_text}</i>",
+                        f"<i>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{self._emoji_safe(header_text)}</i>",
                         self.text_style_subtitles,
                     )
                 ]
@@ -1087,7 +1132,7 @@ class PdfGenerator(object):
             table_content.append(
                 [
                     Paragraph(
-                        f"<i>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{footer_text}</i>",
+                        f"<i>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{self._emoji_safe(footer_text)}</i>",
                         self.text_style_subtitles,
                     )
                 ]
@@ -1129,7 +1174,8 @@ class PdfGenerator(object):
         else:
             title_text_style = self.text_style_h3
 
-        title = Paragraph(f"<para align=center><b>{anchor}{title_text}</b></para>", title_text_style)
+        safe_title = self._emoji_safe(title_text)
+        title = Paragraph(f"<para align=center><b>{anchor}{safe_title}</b></para>", title_text_style)
 
         rows = [[title]]
 
@@ -1137,7 +1183,7 @@ class PdfGenerator(object):
             if not isinstance(subtitle_text, list):
                 subtitle_text = [subtitle_text]
 
-            subtitle_text_str = "<br/>".join(subtitle_text)
+            subtitle_text_str = "<br/>".join(self._emoji_safe(t) for t in subtitle_text)
             subtitle = Paragraph(f"<para align=center>{subtitle_text_str}</para>", self.text_style_subtitles)
             rows.append([subtitle])
 
@@ -1145,7 +1191,7 @@ class PdfGenerator(object):
             if not isinstance(subsubtitle_text, list):
                 subsubtitle_text = [subsubtitle_text]
 
-            subsubtitle_text_str = "<br/>".join(subsubtitle_text)
+            subsubtitle_text_str = "<br/>".join(self._emoji_safe(t) for t in subsubtitle_text)
             subsubtitle = Paragraph(f"<para align=center>{subsubtitle_text_str}</para>", self.text_style_subsubtitles)
             rows.append([subsubtitle])
 
@@ -1204,12 +1250,12 @@ class PdfGenerator(object):
                             max_chars=self.settings.report_settings.max_data_chars,
                             halve_max_chars=(cell_ndx == manager_header_ndx),
                         )
-                        display_row.append(Paragraph(cell_text, self.text_style_normal))
+                        display_row.append(Paragraph(self._emoji_safe(cell_text), self.text_style_normal))
                     else:
                         cell_text = truncate_cell_for_display(
                             cell, max_chars=self.settings.report_settings.max_data_chars, sesqui_max_chars=True
                         )
-                        display_row.append(Paragraph(cell_text, self.text_style_normal))
+                        display_row.append(Paragraph(self._emoji_safe(cell_text), self.text_style_normal))
 
                 else:
                     display_row.append(cell)
@@ -1840,14 +1886,16 @@ class PdfGenerator(object):
                         else f"Division {division_count}"
                     )
 
+                    div_data = [team[:-1] for team in division]
+                    div_widths = self.auto_fit_column_widths(self.standings_headers, div_data)
                     division_table = self.create_section(
                         table_title,
                         "metrics",
                         self.standings_headers,
-                        [team[:-1] for team in division],
+                        div_data,
                         standings_style,
                         standings_style,
-                        self.widths_11_cols_no_1,
+                        div_widths,
                         header_text=table_header,
                         footer_text=table_footer,
                         metric_type="standings",
@@ -1861,6 +1909,9 @@ class PdfGenerator(object):
                 standings = KeepTogether(division_standings_list)
 
             else:
+                standings_widths = self.auto_fit_column_widths(
+                    self.standings_headers, self.report_data.data_for_current_standings
+                )
                 standings = self.create_section(
                     "League Standings",
                     "metrics",
@@ -1868,7 +1919,7 @@ class PdfGenerator(object):
                     self.report_data.data_for_current_standings,
                     standings_style,
                     standings_style,
-                    self.widths_10_cols_no_1,
+                    standings_widths,
                     metric_type="standings",
                 )
             elements.append(standings)
@@ -2070,6 +2121,7 @@ class PdfGenerator(object):
             elements.append(self.spacer_twentieth_inch)
             # Best FA Pickup
             best_fa_rows = self.awards_fa_best if self.awards_fa_best else [["—", "—", "—", "—"]]
+            best_fa_widths = self.auto_fit_column_widths(self.transactions_awards_headers_fa, best_fa_rows)
             elements.append(
                 self.create_section(
                     "Best FA Pickup",
@@ -2078,7 +2130,7 @@ class PdfGenerator(object):
                     best_fa_rows,
                     self.style_no_highlight,
                     None,
-                    self.widths_04_cols_no_1,
+                    best_fa_widths,
                     subtitle_text=(
                         (
                             f"Week {self.week_for_report}" + (
@@ -2094,6 +2146,7 @@ class PdfGenerator(object):
             awards_added = awards_added or bool(self.awards_fa_best)
             # Worst FA Pickup
             worst_fa_rows = self.awards_fa_worst if self.awards_fa_worst else [["—", "—", "—", "—"]]
+            worst_fa_widths = self.auto_fit_column_widths(self.transactions_awards_headers_fa, worst_fa_rows)
             elements.append(
                 self.create_section(
                     "Worst FA Pickup",
@@ -2102,7 +2155,7 @@ class PdfGenerator(object):
                     worst_fa_rows,
                     self.style_no_highlight,
                     None,
-                    self.widths_04_cols_no_1,
+                    worst_fa_widths,
                     subtitle_text=(
                         (
                             f"Week {self.week_for_report}" + (
@@ -2118,6 +2171,7 @@ class PdfGenerator(object):
             awards_added = awards_added or bool(self.awards_fa_worst)
             # Best Drop
             best_drop_rows = self.awards_drop_best if self.awards_drop_best else [["—", "—", "—", "—"]]
+            best_drop_widths = self.auto_fit_column_widths(self.transactions_awards_headers_drop, best_drop_rows)
             elements.append(
                 self.create_section(
                     "Best Drop",
@@ -2126,7 +2180,7 @@ class PdfGenerator(object):
                     best_drop_rows,
                     self.style_no_highlight,
                     None,
-                    self.widths_04_cols_no_1,
+                    best_drop_widths,
                     subtitle_text=(
                         f"Week {self.week_for_report}" if self.awards_drop_best else f"No qualifying events — Week {self.week_for_report}"
                     ),
@@ -2136,6 +2190,7 @@ class PdfGenerator(object):
             awards_added = awards_added or bool(self.awards_drop_best)
             # Worst Drop
             worst_drop_rows = self.awards_drop_worst if self.awards_drop_worst else [["—", "—", "—", "—"]]
+            worst_drop_widths = self.auto_fit_column_widths(self.transactions_awards_headers_drop, worst_drop_rows)
             elements.append(
                 self.create_section(
                     "Worst Drop",
@@ -2144,7 +2199,7 @@ class PdfGenerator(object):
                     worst_drop_rows,
                     self.style_no_highlight,
                     None,
-                    self.widths_04_cols_no_1,
+                    worst_drop_widths,
                     subtitle_text=(
                         f"Week {self.week_for_report}" if self.awards_drop_worst else f"No qualifying events — Week {self.week_for_report}"
                     ),
@@ -2154,6 +2209,9 @@ class PdfGenerator(object):
             awards_added = awards_added or bool(self.awards_drop_worst)
             # Worst Start/Sit
             if self.awards_worst_startsit:
+                startsit_widths = self.auto_fit_column_widths(
+                    self.transactions_awards_headers_startsit, self.awards_worst_startsit
+                )
                 elements.append(
                     self.create_section(
                         "Worst Start/Sit",
@@ -2162,7 +2220,7 @@ class PdfGenerator(object):
                         self.awards_worst_startsit,
                         self.style_no_highlight,
                         None,
-                        self.widths_05_cols_no_1,
+                        startsit_widths,
                         subtitle_text=f"Week {self.week_for_report}",
                     )
                 )
@@ -2170,6 +2228,9 @@ class PdfGenerator(object):
                 awards_added = True
             # Best/Worst Trade (this week)
             if self.awards_trade_best:
+                trade_best_widths = self.auto_fit_column_widths(
+                    self.transactions_awards_headers_trade, self.awards_trade_best
+                )
                 elements.append(
                     self.create_section(
                         "Best Trade (Net Points)",
@@ -2178,13 +2239,16 @@ class PdfGenerator(object):
                         self.awards_trade_best,
                         self.style_no_highlight,
                         None,
-                        self.widths_04_cols_no_1,
+                        trade_best_widths,
                         subtitle_text=f"Week {self.week_for_report}",
                     )
                 )
                 elements.append(self.spacer_twentieth_inch)
                 awards_added = True
             if self.awards_trade_worst:
+                trade_worst_widths = self.auto_fit_column_widths(
+                    self.transactions_awards_headers_trade, self.awards_trade_worst
+                )
                 elements.append(
                     self.create_section(
                         "Worst Trade (Net Points)",
@@ -2193,7 +2257,7 @@ class PdfGenerator(object):
                         self.awards_trade_worst,
                         self.style_no_highlight,
                         None,
-                        self.widths_04_cols_no_1,
+                        trade_worst_widths,
                         subtitle_text=f"Week {self.week_for_report}",
                     )
                 )
@@ -2202,6 +2266,9 @@ class PdfGenerator(object):
 
             # Season-to-date most lopsided trade leader
             if self.awards_trade_season_best:
+                trade_season_widths = self.auto_fit_column_widths(
+                    self.transactions_awards_headers_trade, self.awards_trade_season_best
+                )
                 elements.append(
                     self.create_section(
                         "Most Lopsided Trade (Season-to-date)",
@@ -2210,7 +2277,7 @@ class PdfGenerator(object):
                         self.awards_trade_season_best,
                         self.style_no_highlight,
                         None,
-                        self.widths_04_cols_no_1,
+                        trade_season_widths,
                         subtitle_text=None,
                     )
                 )

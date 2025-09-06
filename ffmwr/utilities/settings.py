@@ -252,9 +252,9 @@ class ReportSettings(CustomSettings):
         description="include Transactions Awards (best/worst FA pickup, trade, drop, worst start/sit)",
     )
 
-    font: str = Field("helvetica", title=__qualname__, description="set font for report (defaults to Helvetica)")
+    font: str = Field("inter", title=__qualname__, description="set font for report (defaults to Inter)")
     supported_fonts_list: List[str] = Field(
-        ["helvetica", "times", "symbola", "opensansemoji", "sketchcollege", "leaguegothic"],
+        ["helvetica", "times", "symbola", "opensansemoji", "sketchcollege", "leaguegothic", "inter"],
         title=__qualname__,
         description="supported fonts (comma-delimited list with no spaces between items)",
     )
